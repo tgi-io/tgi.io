@@ -8,6 +8,8 @@
     "body-parser": "^1.1.2",
     "errorhandler": "^1.0.1",
     "method-override": "^1.0.0",
+    "serve-static": "^1.10.0",
+    "serve-index": "^1.7.2",
     "tgi-core": "*",
     "tgi-interface-createjs": "*",
     "tgi-interface-bootstrap": "*",
