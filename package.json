@@ -3,13 +3,9 @@
   "version": "0.0.1",
   "description": "website for tgi.io",
   "dependencies": {
-    "keystone": "*",
-    "async": "*",
-    "underscore": "*",
-    "dotenv": "*",
     "socket.io": "*",
     "express": "*",
-    "connect": "*",
+    "connect": "^2.8.8",
     "tgi-core": "*",
     "tgi-interface-createjs": "*",
     "tgi-interface-bootstrap": "*",
@@ -30,18 +26,8 @@
     "gulp-jshint": "^1.8.4",
     "gulp-rename": "^1.2.0",
     "gulp-uglify": "^1.0.1",
-    "jshint-stylish": "^1.0.0",
-    "gulp-shell": "^0.4.3",
-    "gulp-watch": "^0.6.5"
-  },
-  "engines": {
-    "node": "*",
-    "npm": "*"
-  },
-  "scripts": {
-    "start": "node keystone.js"
-  },
-  "main": "keystone.js"
+    "jshint-stylish": "^1.0.0"
+  }
 }
 
 

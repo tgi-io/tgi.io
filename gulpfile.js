@@ -22,8 +22,8 @@ var browserApp = [
 gulp.task('buildBrowserApp', function () {
   return gulp.src(browserApp)
     .pipe(concat('browserApp.js'))
-    .pipe(gulp.dest('public/lib'))
+    .pipe(gulp.dest('public'))
     .pipe(rename('browserApp.min.js'))
     .pipe(uglify())
-    .pipe(gulp.dest('public/lib'));
+    .pipe(gulp.dest('public'));
 });
