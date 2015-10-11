@@ -14,9 +14,9 @@ app.use(methodOverride());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(serveStatic('public'));
-app.use(serveIndex('public', {icons: true}));
+//app.use(serveIndex('public', {icons: true}));
 app.use(serveStatic('source'));
-app.use(serveIndex('source', {icons: true}));
+//app.use(serveIndex('source', {icons: true}));
 app.use(errorHandler({dumpExceptions: true, showStack: true}));
 
 /**
@@ -42,7 +42,7 @@ var IP = addresses[0];
 var port = process.env.OPENSHIFT_NODEJS_PORT || 8080;
 var hostname = process.env.OPENSHIFT_NODEJS_IP || IP;
 var server = app.listen(port, hostname, function () {
-  console.log('server listening on: http://' + hostname + ':' + port + '/desktop.html');
+  console.log('server listening on: http://' + hostname + ':' + port);
 });
 
 /**

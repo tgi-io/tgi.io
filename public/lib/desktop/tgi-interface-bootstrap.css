@@ -1,0 +1,125 @@
+/*
+    Padding for fixed navbar
+*/
+body {
+    padding-top: 70px;
+}
+
+.navbar-btn {
+    /*padding: 0;*/
+    /*margin-top: 0;*/
+    margin-right: 4px;
+    margin-left: 4px;
+    /*margin-bottom: 0;*/
+}
+
+/*
+    panel tweaks
+*/
+.panel {
+    -moz-box-shadow: 2px 2px 5px 1px rgba(0, 0, 0, 0.25);
+    -webkit-box-shadow: 2px 2px 5px 1px rgba(0, 0, 0, 0.25);
+    box-shadow: 2px 2px 5px 1px rgba(0, 0, 0, 0.25);
+    margin-bottom: 12px;
+}
+
+.panel-body {
+    padding: 6px;
+}
+
+.panel-heading {
+    padding: 10px 8px;
+}
+
+.panel-title-text:hover,
+.panel-title-text:focus {
+    text-decoration: none;
+}
+
+.panel-glyph-right {
+    padding: 0;
+    margin: 0 0 0 10px;
+    font-size: 16px;
+    /*text-align: center;*/
+}
+
+.panel-glyph-left {
+    padding: 0;
+    margin: 0;
+    font-size: 16px;
+    /*text-align: center;*/
+}
+
+/*
+    well adjustments
+*/
+
+.well-panel {
+    min-height: 20px;
+    padding-top: 10px;
+    padding-right: 10px;
+    padding-left: 10px;
+    padding-bottom: 0;
+    margin-bottom: 0;
+    background-color: rgba(250, 250, 250, 0.75);
+    border: 1px solid #e3e3e3;
+    border-radius: 2px;
+    -webkit-box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.05);
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.05);
+}
+
+.well-panel-table {
+    min-height: 20px;
+    padding: 0;
+    margin-bottom: 0;
+    background-color: rgba(250, 250, 250, 0.75);
+    border: 1px solid #c5c5c5;
+    border-radius: 2px;
+    -webkit-box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.05);
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.05);
+}
+
+/*
+    Presentation
+*/
+.btn-presentation {
+    margin: 0 8px 8px 0;
+}
+
+@media (min-width: 768px) {
+    .col-sm-1 {
+        width: 10%;
+    }
+}
+
+/*
+    For bootstrap-notify
+*/
+.alert-notify {
+    -moz-box-shadow: 4px 4px 10px 2px rgba(0, 0, 0, 0.45);
+    -webkit-box-shadow: 4px 4px 10px 2px rgba(0, 0, 0, 0.45);
+    box-shadow: 4px 4px 10px 2px rgba(0, 0, 0, 0.45);
+}
+
+/*
+    Hovering for tables / themes using ex a.bg-danger:hover
+*/
+
+.table-hover-default > tbody > tr:hover {
+    background-color: #e7e7e7;
+}
+.table-hover-primary > tbody > tr:hover {
+    background-color: #286090;
+}
+.table-hover-info > tbody > tr:hover {
+    background-color: #afd9ee;
+}
+.table-hover-warning > tbody > tr:hover {
+    background-color: #f7ecb5;
+}
+.table-hover-danger > tbody > tr:hover {
+    background-color: #e4b9b9;
+}
+.table-hover-success > tbody > tr:hover {
+    background-color: #c1e2b3;
+}

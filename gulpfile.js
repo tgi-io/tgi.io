@@ -27,8 +27,8 @@ gulp.task('buildDesktopLib', function () {
     .pipe(gulp.dest('public/lib'));
 });
 
-// Build Cell Lib
-var cellLib = [
+// Build Mobile Lib
+var mobileLib = [
   'node_modules/tgi-core/lib/_packaging/lib-header',
   'node_modules/tgi-core/dist/tgi.core.chunk.js',
   'node_modules/tgi-interface-framework7/dist/tgi.interface.framework7.chunk.js',
@@ -36,11 +36,11 @@ var cellLib = [
   'node_modules/tgi-store-remote/dist/tgi.store.remote.chunk.js',
   'node_modules/tgi-core/lib/_packaging/lib-footer'
 ];
-gulp.task('buildCellLib', function () {
-  return gulp.src(cellLib)
-    .pipe(concat('cell.js'))
+gulp.task('buildMobileLib', function () {
+  return gulp.src(mobileLib)
+    .pipe(concat('mobile.js'))
     .pipe(gulp.dest('public/lib'))
-    .pipe(rename('cell.min.js'))
+    .pipe(rename('mobile.min.js'))
     .pipe(uglify())
     .pipe(gulp.dest('public/lib'));
 });
@@ -48,4 +48,13 @@ gulp.task('buildCellLib', function () {
 // Copy bootstrap dist
 gulp.task('copyBootstrapDist', function () {
   return gulp.src(['node_modules/tgi-interface-bootstrap/dist/**']).pipe(gulp.dest('public/lib/desktop'));
+});
+
+// Copy framework7 dist
+gulp.task('copyFramework7Dist', function () {
+  return gulp.src([
+    'node_modules/tgi-interface-framework7/dist/**',
+    'node_modules/tgi-interface-framework7/node_modules/framework7/dist/css/**',
+    'node_modules/tgi-interface-framework7/node_modules/framework7/dist/js/**'
+  ]).pipe(gulp.dest('public/lib/mobile'));
 });
