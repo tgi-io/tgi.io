@@ -9,7 +9,7 @@ var bodyParser = require('body-parser');
 var errorHandler = require('errorhandler');
 var methodOverride = require('method-override');
 var serveStatic = require('serve-static');
-var serveIndex = require('serve-index');
+//var serveIndex = require('serve-index');
 app.use(methodOverride());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
@@ -48,9 +48,29 @@ var server = app.listen(port, hostname, function () {
 /**
  * tgi lib
  */
-var TGI = require('tgi-store-remote/dist/tgi-store-host.js');
+var TGI = require('./server.lib.js');
 var tgi = TGI.CORE();
-tgi.Transport.hostStore = new tgi.MemoryStore();
+
+/**
+ * Mongo
+ */
+var mongo = require('mongodb');
+var MongoStore = TGI.STORE.MONGODB().MongoStore;
+var mongoStore = new MongoStore({name: 'www.tgi.io'});
+mongoStore.onConnect('http://localhost', function (store, err) {
+  if (err) {
+    console.log('mongoStore unavailable (' + err + ')');
+    //process.exit(1);
+  } else {
+    console.log('mongoStore connected');
+  }
+  console.log(mongoStore.name + ' ' + mongoStore.storeType);
+}, {vendor: mongo, keepConnection: true});
+
+/**
+ * Attach host store to mongo store
+ */
+tgi.Transport.hostStore = mongoStore;
 
 /**
  * Start up socket server (io)

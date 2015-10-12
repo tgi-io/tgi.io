@@ -45,6 +45,21 @@ gulp.task('buildMobileLib', function () {
     .pipe(gulp.dest('public/lib'));
 });
 
+// Build Server Lib
+var serverLib = [
+  'node_modules/tgi-core/lib/_packaging/lib-header',
+  'node_modules/tgi-core/dist/tgi.core.chunk.js',
+  'node_modules/tgi-store-remote/dist/tgi.store.host.chunk.js',
+  'node_modules/tgi-store-mongodb/dist/tgi.store.json.mongodb.chunk.js',
+  'node_modules/tgi-store-json-file/dist/tgi.store.json.file.chunk.js',
+  'node_modules/tgi-core/lib/_packaging/lib-footer'
+];
+gulp.task('buildServerLib', function () {
+  return gulp.src(serverLib)
+    .pipe(concat('server.lib.js'))
+    .pipe(gulp.dest('.'));
+});
+
 // Copy bootstrap dist
 gulp.task('copyBootstrapDist', function () {
   return gulp.src(['node_modules/tgi-interface-bootstrap/dist/**']).pipe(gulp.dest('public/lib/desktop'));

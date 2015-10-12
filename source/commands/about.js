@@ -11,8 +11,6 @@
   blah += blah;
   blah += blah;
   blah += blah;
-
-
   var aboutPresentation = new tgi.Presentation();
   aboutPresentation.set('contents', [
     '# About tgi.io',

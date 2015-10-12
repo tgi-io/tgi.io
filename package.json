@@ -10,6 +10,7 @@
     "method-override": "^1.0.0",
     "serve-static": "^1.10.0",
     "serve-index": "^1.7.2",
+    "mongodb": "^2.0.45",
     "tgi-core": "*",
     "tgi-interface-createjs": "*",
     "tgi-interface-bootstrap": "*",
