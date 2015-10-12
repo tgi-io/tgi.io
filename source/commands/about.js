@@ -22,6 +22,7 @@
   var aboutCommand = new tgi.Command({
     name: 'about',
     type: 'Presentation',
+    icon: 'fa-info-circle',
     contents: aboutPresentation
   });
 
