@@ -57,6 +57,18 @@ var tgi = TGI.CORE();
 var mongo = require('mongodb');
 var MongoStore = TGI.STORE.MONGODB().MongoStore;
 var mongoStore = new MongoStore({name: 'www.tgi.io'});
+var options = {};
+
+options.databaseName = 'siteDatabase';
+options.userName = process.env.OPENSHIFT_MONGODB_DB_USERNAME;
+options.password = process.env.OPENSHIFT_MONGODB_DB_PASSWORD;
+options.authdb = 'admin';
+options.vendor = mongo;
+options.keepConnection = true;
+options.host = process.env.OPENSHIFT_MONGODB_DB_HOST;
+if (process.env.OPENSHIFT_MONGODB_DB_PORT)
+  options.port = parseInt(process.env.OPENSHIFT_MONGODB_DB_PORT);
+
 mongoStore.onConnect('http://localhost', function (store, err) {
   if (err) {
     console.log('mongoStore unavailable (' + err + ')');
@@ -65,7 +77,7 @@ mongoStore.onConnect('http://localhost', function (store, err) {
     console.log('mongoStore connected');
   }
   console.log(mongoStore.name + ' ' + mongoStore.storeType);
-}, {vendor: mongo, keepConnection: true});
+}, options);
 
 /**
  * Attach host store to mongo store
