@@ -2,24 +2,18 @@
  * www.tgi.io/source/commands/about.js
  */
 (function () {
-  var blah = 'blah ';
-  blah += blah;
-  blah += blah;
-  blah += blah;
-  blah += blah;
-  blah += blah;
-  blah += blah;
-  blah += blah;
-  blah += blah;
   var aboutPresentation = new tgi.Presentation();
+  var counter = new tgi.Attribute({name: 'Counter', type: 'Number', value: 100});
   aboutPresentation.set('contents', [
     '# About tgi.io',
     '-',
-    blah
+    'text to come ...',
+    counter
   ]);
   var aboutCommand = new tgi.Command({
     name: 'about',
     type: 'Presentation',
+    theme: 'info',
     icon: 'fa-info-circle',
     contents: aboutPresentation
   });

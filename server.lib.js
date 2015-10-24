@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.3.11',
+      version: '0.4.7',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -27,6 +27,7 @@ var TGI = {
       Request: Request,
       Session: Session,
       Store: Store,
+      Text: Text,
       Transport: Transport,
       User: User,
       Workspace: Workspace,
@@ -52,7 +53,7 @@ var TGI = {
 /**
  * Constructor
  */
- function Attribute(args, arg2) {
+function Attribute(args, arg2) {
   var splitTypes; // For String(30) type
   if (false === (this instanceof Attribute)) throw new Error('new operator required');
   if (typeof args == 'string') {
@@ -182,6 +183,9 @@ Attribute.prototype.onEvent = function (events, callback) {
   this._eventListeners.push({events: events, callback: callback});
   return this;
 };
+Attribute.prototype.offEvent = function () {
+  this._eventListeners = [];
+};
 Attribute.prototype._emitEvent = function (event) {
   var i;
   for (i in this._eventListeners) {
@@ -192,6 +196,14 @@ Attribute.prototype._emitEvent = function (event) {
       }
     }
   }
+};
+Attribute.prototype.get = function () {
+  return this.value;
+};
+Attribute.prototype.set = function (newValue) {
+  this.value = newValue;
+  this._emitEvent('StateChange');
+  return this.value;
 };
 Attribute.prototype.coerce = function (value) {
   var newValue = value;
@@ -514,7 +526,7 @@ Command.prototype.execute = function (context) {
         context.render(this, 'View');
         break;
       case 'Presentation':
-        context.render(this.contents, this.presentationMode);
+        context.render(this);
         break;
     }
   } catch (e) {
@@ -801,11 +813,10 @@ Interface.prototype.dispatch = function (request, response) {
 Interface.prototype.notify = function (message) {
   if (false === (message instanceof Message)) throw new Error('Message required');
 };
-Interface.prototype.render = function (presentation, presentationMode, callback) {
-  if (false === (presentation instanceof Presentation)) throw new Error('Presentation object required');
-  if (typeof presentationMode !== 'string') throw new Error('presentationMode required');
-  if (!contains(Command.getPresentationModes(), presentationMode)) throw new Error('Invalid presentationMode: ' + presentationMode);
-  if (callback && typeof callback != 'function') throw new Error('optional second argument must a commandRequest callback function');
+Interface.prototype.render = function (command, callback) {
+  if (false === (command instanceof Command)) throw new Error('Command object required');
+  //if (!contains(Command.getPresentationModes(), presentationMode)) throw new Error('Invalid presentationMode: ' + presentationMode);
+  //if (callback && typeof callback != 'function') throw new Error('optional second argument must a commandRequest callback function');
 };
 Interface.prototype.info = function (text) {
   if (!text || typeof text !== 'string') throw new Error('text required');
@@ -1042,7 +1053,7 @@ Model.prototype.getObjectStateErrors = function () {
 Model.prototype.get = function (attribute) {
   for (var i = 0; i < this.attributes.length; i++) {
     if (this.attributes[i].name.toUpperCase() == attribute.toUpperCase())
-      return this.attributes[i].value;
+      return this.attributes[i].get();
   }
 };
 Model.prototype.getAttributeType = function (attribute) {
@@ -1054,7 +1065,8 @@ Model.prototype.getAttributeType = function (attribute) {
 Model.prototype.set = function (attribute, value) {
   for (var i = 0; i < this.attributes.length; i++) {
     if (this.attributes[i].name.toUpperCase() == attribute.toUpperCase()) {
-      this.attributes[i].value = value;
+      this.attributes[i].set(value);
+      this._emitEvent('StateChange');
       return;
     }
   }
@@ -1360,6 +1372,62 @@ Store.prototype.getList = function () {
   throw new Error('Store does not provide getList');
 };
 
+/**---------------------------------------------------------------------------------------------------------------------
+ * tgi-core/lib/core/tgi-core-text.source.js
+ */
+/**
+ * Constructor
+ */
+function Text(contents) {
+  if (false === (this instanceof Text)) throw new Error('new operator required');
+  this.contents = contents || '';
+  this._eventListeners = [];
+}
+/**
+ * Methods
+ */
+Text.prototype.toString = function () {
+  return 'Text: \'' + (this.contents || '') + '\'';
+};
+Text.prototype.get = function () {
+  return this.contents;
+};
+Text.prototype.set = function (newValue) {
+  this.contents = newValue;
+  this._emitEvent('StateChange');
+  return this.contents;
+};
+Text.prototype._emitEvent = function (event) {
+  var i;
+  for (i in this._eventListeners) {
+    if (this._eventListeners.hasOwnProperty(i)) {
+      var subscriber = this._eventListeners[i];
+      if ((subscriber.events.length && subscriber.events[0] === '*') || contains(subscriber.events, event)) {
+        subscriber.callback.call(this, event);
+      }
+    }
+  }
+};
+Text.prototype.onEvent = function (events, callback) {
+  if (!(events instanceof Array)) {
+    if (typeof events != 'string') throw new Error('subscription string or array required');
+    events = [events]; // coerce to array
+  }
+  if (typeof callback != 'function') throw new Error('callback is required');
+  // Check known Events
+  for (var i in events) {
+    if (events.hasOwnProperty(i))
+      if (events[i] != '*')
+        if (!contains(['StateChange'], events[i]))
+          throw new Error('Unknown command event: ' + events[i]);
+  }
+  // All good add to chain
+  this._eventListeners.push({events: events, callback: callback});
+  return this;
+};
+Text.prototype.offEvent = function () {
+  this._eventListeners = [];
+};
 /**---------------------------------------------------------------------------------------------------------------------
  * tgi-core/lib/core/tgi-core-transport.source.js
  */
@@ -2094,11 +2162,11 @@ Presentation.prototype.getObjectStateErrors = function (modelCheckOnly) {
     var gotError = false;
     if (contents instanceof Array) {
       for (i = 0; i < contents.length; i++) {
-        if (!(contents[i] instanceof Command || contents[i] instanceof Attribute || contents[i] instanceof List || typeof contents[i] == 'string'))
+        if (!(contents[i] instanceof Text || contents[i] instanceof Command || contents[i] instanceof Attribute || contents[i] instanceof List || typeof contents[i] == 'string'))
           gotError = true;
       }
       if (gotError)
-        this.validationErrors.push('contents elements must be Command, Attribute, List or string');
+        this.validationErrors.push('contents elements must be Text, Command, Attribute, List or string');
     } else {
       this.validationErrors.push('contents must be Array');
     }
@@ -2106,6 +2174,7 @@ Presentation.prototype.getObjectStateErrors = function (modelCheckOnly) {
   this.validationMessage = this.validationErrors.length > 0 ? this.validationErrors[0] : '';
   return this.validationErrors;
 };
+
 Presentation.prototype.validate = function (callback) {
   var presentation = this;
   if (typeof callback != 'function') throw new Error('callback is required');
@@ -2122,32 +2191,43 @@ Presentation.prototype.validate = function (callback) {
   var attributeCount = 0;
   var checkCount = 0;
   var contents = this.get('contents');
-  if (contents instanceof Array) {
-    // Count first
-    for (i = 0; i < contents.length; i++) {
-      if (contents[i] instanceof Attribute) {
-        attributeCount++;
-      }
-    }
-    // Launch validations
-    for (i = 0; i < contents.length; i++) {
-      if (contents[i] instanceof Attribute) {
-        contents[i].validate(checkAttrib);
-      }
+  if (!(contents instanceof Array))
+    contents = [];
+
+  // Count first
+  for (i = 0; i < contents.length; i++) {
+    if (contents[i] instanceof Attribute) {
+      attributeCount++;
     }
   }
+  // Launch validations
+  for (i = 0; i < contents.length; i++) {
+    if (contents[i] instanceof Attribute) {
+      contents[i].validate(checkAttrib);
+    }
+  }
+
+  // If no attributes call callback since checkAttrib not called
+  if (contents.length < 1)
+    finishUp();
+
   function checkAttrib() {
     checkCount++;
     // this is the attribute TODO this bad usage ?
     if (this.validationMessage) // jshint ignore:line
       gotError = true;
-    if (checkCount==checkCount) {
+    if (attributeCount == checkCount) {
       if (gotError)
         presentation.validationErrors.push('contents has validation errors');
-      presentation.validationMessage = presentation.validationErrors.length > 0 ? presentation.validationErrors[0] : '';
-      callback();
+      finishUp();
     }
   }
+
+  function finishUp() {
+    presentation.validationMessage = presentation.validationErrors.length > 0 ? presentation.validationErrors[0] : '';
+    callback();
+  }
+
 };
 
 /**

@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.3.10',
+      version: '0.4.7',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -27,6 +27,7 @@ var TGI = {
       Request: Request,
       Session: Session,
       Store: Store,
+      Text: Text,
       Transport: Transport,
       User: User,
       Workspace: Workspace,
@@ -52,7 +53,7 @@ var TGI = {
 /**
  * Constructor
  */
- function Attribute(args, arg2) {
+function Attribute(args, arg2) {
   var splitTypes; // For String(30) type
   if (false === (this instanceof Attribute)) throw new Error('new operator required');
   if (typeof args == 'string') {
@@ -182,6 +183,9 @@ Attribute.prototype.onEvent = function (events, callback) {
   this._eventListeners.push({events: events, callback: callback});
   return this;
 };
+Attribute.prototype.offEvent = function () {
+  this._eventListeners = [];
+};
 Attribute.prototype._emitEvent = function (event) {
   var i;
   for (i in this._eventListeners) {
@@ -192,6 +196,14 @@ Attribute.prototype._emitEvent = function (event) {
       }
     }
   }
+};
+Attribute.prototype.get = function () {
+  return this.value;
+};
+Attribute.prototype.set = function (newValue) {
+  this.value = newValue;
+  this._emitEvent('StateChange');
+  return this.value;
 };
 Attribute.prototype.coerce = function (value) {
   var newValue = value;
@@ -514,7 +526,7 @@ Command.prototype.execute = function (context) {
         context.render(this, 'View');
         break;
       case 'Presentation':
-        context.render(this.contents, this.presentationMode);
+        context.render(this);
         break;
     }
   } catch (e) {
@@ -801,11 +813,10 @@ Interface.prototype.dispatch = function (request, response) {
 Interface.prototype.notify = function (message) {
   if (false === (message instanceof Message)) throw new Error('Message required');
 };
-Interface.prototype.render = function (presentation, presentationMode, callback) {
-  if (false === (presentation instanceof Presentation)) throw new Error('Presentation object required');
-  if (typeof presentationMode !== 'string') throw new Error('presentationMode required');
-  if (!contains(Command.getPresentationModes(), presentationMode)) throw new Error('Invalid presentationMode: ' + presentationMode);
-  if (callback && typeof callback != 'function') throw new Error('optional second argument must a commandRequest callback function');
+Interface.prototype.render = function (command, callback) {
+  if (false === (command instanceof Command)) throw new Error('Command object required');
+  //if (!contains(Command.getPresentationModes(), presentationMode)) throw new Error('Invalid presentationMode: ' + presentationMode);
+  //if (callback && typeof callback != 'function') throw new Error('optional second argument must a commandRequest callback function');
 };
 Interface.prototype.info = function (text) {
   if (!text || typeof text !== 'string') throw new Error('text required');
@@ -893,7 +904,7 @@ List.prototype.get = function (attribute) {
       return this._items[this._itemIndex][i];
   }
 };
-List.prototype.set = function (attribute,value) {
+List.prototype.set = function (attribute, value) {
   if (this._items.length < 1) throw new Error('list is empty');
   for (var i = 0; i < this.model.attributes.length; i++) {
     if (this.model.attributes[i].name.toUpperCase() == attribute.toUpperCase()) {
@@ -919,10 +930,19 @@ List.prototype.addItem = function (item) {
   this._itemIndex = this._items.length - 1;
   return this;
 };
-List.prototype.removeItem = function (item) {
+List.prototype.removeItem = function () {
   this._items.splice(this._itemIndex, 1);
   this._itemIndex--;
   return this;
+};
+List.prototype.findItemByID = function (id) {
+  var gotMore = this.moveFirst();
+  while (gotMore) {
+    if (id == this._items[this._itemIndex][0])
+      return true;
+    gotMore = this.moveNext();
+  }
+  return false;
 };
 List.prototype.indexedItem = function (index) {
   if (this._items.length < 1) return false;
@@ -1033,7 +1053,7 @@ Model.prototype.getObjectStateErrors = function () {
 Model.prototype.get = function (attribute) {
   for (var i = 0; i < this.attributes.length; i++) {
     if (this.attributes[i].name.toUpperCase() == attribute.toUpperCase())
-      return this.attributes[i].value;
+      return this.attributes[i].get();
   }
 };
 Model.prototype.getAttributeType = function (attribute) {
@@ -1045,7 +1065,8 @@ Model.prototype.getAttributeType = function (attribute) {
 Model.prototype.set = function (attribute, value) {
   for (var i = 0; i < this.attributes.length; i++) {
     if (this.attributes[i].name.toUpperCase() == attribute.toUpperCase()) {
-      this.attributes[i].value = value;
+      this.attributes[i].set(value);
+      this._emitEvent('StateChange');
       return;
     }
   }
@@ -1351,6 +1372,62 @@ Store.prototype.getList = function () {
   throw new Error('Store does not provide getList');
 };
 
+/**---------------------------------------------------------------------------------------------------------------------
+ * tgi-core/lib/core/tgi-core-text.source.js
+ */
+/**
+ * Constructor
+ */
+function Text(contents) {
+  if (false === (this instanceof Text)) throw new Error('new operator required');
+  this.contents = contents || '';
+  this._eventListeners = [];
+}
+/**
+ * Methods
+ */
+Text.prototype.toString = function () {
+  return 'Text: \'' + (this.contents || '') + '\'';
+};
+Text.prototype.get = function () {
+  return this.contents;
+};
+Text.prototype.set = function (newValue) {
+  this.contents = newValue;
+  this._emitEvent('StateChange');
+  return this.contents;
+};
+Text.prototype._emitEvent = function (event) {
+  var i;
+  for (i in this._eventListeners) {
+    if (this._eventListeners.hasOwnProperty(i)) {
+      var subscriber = this._eventListeners[i];
+      if ((subscriber.events.length && subscriber.events[0] === '*') || contains(subscriber.events, event)) {
+        subscriber.callback.call(this, event);
+      }
+    }
+  }
+};
+Text.prototype.onEvent = function (events, callback) {
+  if (!(events instanceof Array)) {
+    if (typeof events != 'string') throw new Error('subscription string or array required');
+    events = [events]; // coerce to array
+  }
+  if (typeof callback != 'function') throw new Error('callback is required');
+  // Check known Events
+  for (var i in events) {
+    if (events.hasOwnProperty(i))
+      if (events[i] != '*')
+        if (!contains(['StateChange'], events[i]))
+          throw new Error('Unknown command event: ' + events[i]);
+  }
+  // All good add to chain
+  this._eventListeners.push({events: events, callback: callback});
+  return this;
+};
+Text.prototype.offEvent = function () {
+  this._eventListeners = [];
+};
 /**---------------------------------------------------------------------------------------------------------------------
  * tgi-core/lib/core/tgi-core-transport.source.js
  */
@@ -2085,11 +2162,11 @@ Presentation.prototype.getObjectStateErrors = function (modelCheckOnly) {
     var gotError = false;
     if (contents instanceof Array) {
       for (i = 0; i < contents.length; i++) {
-        if (!(contents[i] instanceof Command || contents[i] instanceof Attribute || contents[i] instanceof List || typeof contents[i] == 'string'))
+        if (!(contents[i] instanceof Text || contents[i] instanceof Command || contents[i] instanceof Attribute || contents[i] instanceof List || typeof contents[i] == 'string'))
           gotError = true;
       }
       if (gotError)
-        this.validationErrors.push('contents elements must be Command, Attribute, List or string');
+        this.validationErrors.push('contents elements must be Text, Command, Attribute, List or string');
     } else {
       this.validationErrors.push('contents must be Array');
     }
@@ -2097,6 +2174,7 @@ Presentation.prototype.getObjectStateErrors = function (modelCheckOnly) {
   this.validationMessage = this.validationErrors.length > 0 ? this.validationErrors[0] : '';
   return this.validationErrors;
 };
+
 Presentation.prototype.validate = function (callback) {
   var presentation = this;
   if (typeof callback != 'function') throw new Error('callback is required');
@@ -2113,32 +2191,43 @@ Presentation.prototype.validate = function (callback) {
   var attributeCount = 0;
   var checkCount = 0;
   var contents = this.get('contents');
-  if (contents instanceof Array) {
-    // Count first
-    for (i = 0; i < contents.length; i++) {
-      if (contents[i] instanceof Attribute) {
-        attributeCount++;
-      }
-    }
-    // Launch validations
-    for (i = 0; i < contents.length; i++) {
-      if (contents[i] instanceof Attribute) {
-        contents[i].validate(checkAttrib);
-      }
+  if (!(contents instanceof Array))
+    contents = [];
+
+  // Count first
+  for (i = 0; i < contents.length; i++) {
+    if (contents[i] instanceof Attribute) {
+      attributeCount++;
     }
   }
+  // Launch validations
+  for (i = 0; i < contents.length; i++) {
+    if (contents[i] instanceof Attribute) {
+      contents[i].validate(checkAttrib);
+    }
+  }
+
+  // If no attributes call callback since checkAttrib not called
+  if (contents.length < 1)
+    finishUp();
+
   function checkAttrib() {
     checkCount++;
     // this is the attribute TODO this bad usage ?
     if (this.validationMessage) // jshint ignore:line
       gotError = true;
-    if (checkCount==checkCount) {
+    if (attributeCount == checkCount) {
       if (gotError)
         presentation.validationErrors.push('contents has validation errors');
-      presentation.validationMessage = presentation.validationErrors.length > 0 ? presentation.validationErrors[0] : '';
-      callback();
+      finishUp();
     }
   }
+
+  function finishUp() {
+    presentation.validationMessage = presentation.validationErrors.length > 0 ? presentation.validationErrors[0] : '';
+    callback();
+  }
+
 };
 
 /**
@@ -2628,7 +2717,7 @@ var cpad = function (expr, length, fillChar) {
 TGI.INTERFACE = TGI.INTERFACE || {};
 TGI.INTERFACE.BOOTSTRAP = function () {
   return {
-    version: '0.0.3',
+    version: '0.1.0',
     BootstrapInterface: BootstrapInterface
   };
 };
@@ -2701,7 +2790,7 @@ BootstrapInterface.prototype.dispatch = function (request, response) {
         this.activatePanel(request.command);
         requestHandled = true;
       } else {
-        requestHandled = !this.application.dispatch(request);
+        requestHandled = this.application.dispatch(request);
       }
     }
     if (!requestHandled && this.startcallback) {
@@ -2713,6 +2802,11 @@ BootstrapInterface.prototype.dispatch = function (request, response) {
     }
   }
 };
+BootstrapInterface.prototype.render = function (command, callback) {
+  if (false === (command instanceof Command)) throw new Error('Command object required');
+  this.activatePanel(command);
+};
+
 /**
  * DOM helper
  */
@@ -2869,6 +2963,7 @@ BootstrapInterface.prototype.htmlPanels = function () {
  * activatePanel will create if needed, make panel visible and render contents
  */
 BootstrapInterface.prototype.activatePanel = function (command) {
+
   var bootstrapInterface = this;
   var addEle = BootstrapInterface.addEle;
   var addTopEle = BootstrapInterface.addTopEle;
@@ -2900,12 +2995,22 @@ BootstrapInterface.prototype.activatePanel = function (command) {
   }
 
   /**
+   * For now destroy and recreate panel
+   */
+  if (typeof panel != 'undefined') {
+    bootstrapInterface.destroyPanel(panel);
+    panel = undefined;
+  }
+
+  /**
    * If we did not find panel create
    */
   if (typeof panel == 'undefined') {
     panel = {
       name: name,
-      listeners: []
+      listeners: [],
+      attributeListeners: [],
+      textListeners: []
     };
     this.panels.push(panel);
 
@@ -2917,6 +3022,9 @@ BootstrapInterface.prototype.activatePanel = function (command) {
     panel.panelTitle = addEle(panel.panelHeading, 'div', 'panel-title');
     panel.panelTitleText = addEle(panel.panelTitle, 'a', 'panel-title-text', {href: '#'});
     panel.panelTitleText.innerHTML = title;
+    panel.panelBody = addEle(panel.panelDiv, 'div', 'panel-body bg-' + theme);
+    panel.panelWell = addEle(panel.panelBody, 'div', 'well-panel');
+    panel.panelForm = addEle(panel.panelWell, 'form', 'form-horizontal');
 
     /**
      * Close Panel Button
@@ -2924,15 +3032,10 @@ BootstrapInterface.prototype.activatePanel = function (command) {
     panel.panelClose = addEle(panel.panelTitle, 'a', undefined, {href: '#'});
     panel.panelClose.innerHTML = '<span class="glyphicon glyphicon-remove panel-glyph-right pull-right text-muted"></span>';
     $(panel.panelClose).click(function (e) {
-      $(panel.panelClose).off(); // kill listener
-      for (var i = 0; i < bootstrapInterface.panels.length; i++) {
-        if (panel == bootstrapInterface.panels[i])
-          bootstrapInterface.panels.splice(i, 1);
-      }
-      bootstrapInterface.doc.panelRow.removeChild(panel.panelDiv);
-      panel = undefined; // delete dom refs
+      bootstrapInterface.destroyPanel(panel);
       e.preventDefault();
     });
+    panel.listeners.push(panel.panelClose); // so we can avoid leakage on deleting panel
 
     /**
      * Hide Panel Button
@@ -2945,6 +3048,7 @@ BootstrapInterface.prototype.activatePanel = function (command) {
       $(panel.panelShow).show();
       e.preventDefault();
     });
+    panel.listeners.push(panel.panelHide);
 
     /**
      * Show Panel Button
@@ -2958,68 +3062,112 @@ BootstrapInterface.prototype.activatePanel = function (command) {
       $(panel.panelShow).hide();
       e.preventDefault();
     });
-
-    panel.panelBody = addEle(panel.panelDiv, 'div', 'panel-body bg-' + theme);
-    panel.panelWell = addEle(panel.panelBody, 'div', 'well-panel');
-    panel.panelForm = addEle(panel.panelWell, 'form', 'form-horizontal');
+    panel.listeners.push(panel.panelShow);
 
   }
 
   /**
-   * Remove listeners before deleting -- todo WTF ?
+   * Render panel body
    */
-  for (i = 0; i < panel.listeners.length; i++) {
-    var ele = panel.listeners[i];
-    $(ele).off();
-  }
-  panel.buttonDiv = undefined; // WTF ends HERE!!!!!!!!!!!
-
-  /**
-   * Render panel body based on presentation mode
-   */
-  switch (command.presentationMode) {
-    case 'View': // todo edit/view wacked (says view renders edit ???)
-      bootstrapInterface.renderPanelBodyView(panel, command);
-      $(panel.panelBody).show('fast'); //
-      $(panel.panelHide).show();
-      $(panel.panelShow).hide();
-      $('html, body').animate({
-        scrollTop: $(panel.panelDiv).offset().top - $(bootstrapInterface.doc.navBar).height() - 8
-      }, 250);
-      break;
-    default:
-      bootstrapInterface.info('unknown command.presentationMode: ' + command.presentationMode);
-  }
+  bootstrapInterface.renderPanelBody(panel, command);
+  $(panel.panelBody).show('fast'); //
+  $(panel.panelHide).show();
+  $(panel.panelShow).hide();
+  $('html, body').animate({
+    scrollTop: $(panel.panelDiv).offset().top - $(bootstrapInterface.doc.navBar).height() - 8
+  }, 250);
 };
 
 /**
- * renderPanelBodyView will insert the html into the body of the panel for View presentation mode
+ * When deleting panel remove references to avoid leakage
  */
-BootstrapInterface.prototype.renderPanelBodyView = function (panel, command) {
+BootstrapInterface.prototype.destroyPanel = function (panel) {
+  var bootstrapInterface = this;
+  var i, ele;
+  /**
+   * Remove this panel from global panel list
+   */
+  for (i = 0; i < bootstrapInterface.panels.length; i++) {
+    if (panel == bootstrapInterface.panels[i])
+      bootstrapInterface.panels.splice(i, 1);
+  }
+  /**
+   * Remove listeners before deleting
+   */
+  for (i = 0; i < panel.listeners.length; i++) {
+    ele = panel.listeners[i];
+    $(ele).off();
+  }
+  for (i = 0; i < panel.attributeListeners.length; i++) {
+    ele = panel.attributeListeners[i];
+    ele.offEvent();
+  }
+  for (i = 0; i < panel.textListeners.length; i++) {
+    ele = panel.textListeners[i];
+    ele.offEvent();
+  }
+
+  /**
+   * Causes memory leaking when doing soak test
+   */
+  $('html, body').stop();
+
+  /**
+   * Remove panel from
+   */
+  $(panel.panelDiv).remove();
+
+};
+
+/**
+ * renderPanelBody will insert the html into the body of the panel for View presentation mode
+ */
+BootstrapInterface.prototype.renderPanelBody = function (panel, command) {
   var bootstrapInterface = this;
   var addEle = BootstrapInterface.addEle;
-  var i, j;
+  var i, j, indent = false, txtDiv;
   var contents = command.contents.get('contents');
-  panel.panelForm.innerHTML = '';
+  panel.buttonDiv = null;
+  $(panel.panelForm).empty();
   for (i = 0; i < contents.length; i++) {
-    // String markdown or separator '-'
     if (typeof contents[i] == 'string') {
-      if (contents[i] == '-') {
-        panel.panelForm.appendChild(document.createElement("hr"));
-      } else {
-        var txtDiv = document.createElement("div");
-        txtDiv.innerHTML = marked(contents[i]);
-        panel.panelForm.appendChild(txtDiv);
+      switch (contents[i]) {
+        case '-':
+          panel.panelForm.appendChild(document.createElement("hr"));
+          break;
+        case '>':
+          indent = true;
+          break;
+        case '<':
+          indent = false;
+          break;
+        default:
+          txtDiv = addEle(panel.panelForm, 'div', indent ? 'col-sm-offset-3' : '');
+          txtDiv.innerHTML = marked(contents[i]);
+          break;
       }
     }
-    if (contents[i] instanceof Attribute) renderAttribute(contents[i]);
-    if (contents[i] instanceof List) renderList(contents[i],command.theme);
+    if (contents[i] instanceof Text) renderText(contents[i]);
+    if (contents[i] instanceof Attribute) renderAttribute(contents[i], command.presentationMode);
+    if (contents[i] instanceof List) renderList(contents[i], command.theme);
     if (contents[i] instanceof Command) renderCommand(contents[i]);
   }
   /**
    * function to render Attribute
    */
-  function renderAttribute(attribute) {
+  function renderText(text) {
+    var textDiv = addEle(panel.panelForm, 'div', indent ? 'col-sm-offset-3' : '');
+    textDiv.innerHTML = marked(text.get());
+    text.onEvent('StateChange', function () {
+      textDiv.innerHTML = marked(text.get());
+    });
+    panel.textListeners.push(text); // so we can avoid leakage on deleting panel
+  }
+
+  /**
+   * function to render Attribute for Edit
+   */
+  function renderAttribute(attribute, mode) {
 
     var daList;
     var daItems;
@@ -3039,7 +3187,7 @@ BootstrapInterface.prototype.renderPanelBodyView = function (panel, command) {
     var initSwitchery;
     var items;
     var j;
-
+    var validating;
 
     /**
      * Create formGroup container and label
@@ -3068,51 +3216,79 @@ BootstrapInterface.prototype.renderPanelBodyView = function (panel, command) {
     /**
      * Render based on type
      */
-    switch (attribute.type) {
-      case 'Boolean':
+    switch (mode + attribute.type) {
+
+      case 'ViewBoolean':
         input = addEle(inputDiv, 'input', 'js-switch');
         input.setAttribute("type", "checkbox");
         if (attribute.value)
           input.setAttribute("checked", "true");
-        initSwitchery = new Switchery(input, // todo events inside switchery may cause leakage when panels closed
-          {
-            color: window.getComputedStyle(panel.panelTitle, null).getPropertyValue('color'),
-            secondaryColor: '#dfdfdf',
-            className: 'switchery',
-            disabled: false,
-            disabledOpacity: 0.5,
-            speed: '0.1s'
-          });
+
+        initSwitchery = new Switchery(input, {
+          //color: window.getComputedStyle(panel.panelTitle, null).getPropertyValue('color'),
+          color: '#5bc0de', // todo based on panel theme
+          secondaryColor: '#dfdfdf',
+          className: 'switchery',
+          disabled: true,
+          disabledOpacity: 0.5,
+          speed: '0.1s'
+        });
+        $(input).on('change', function () {
+          attribute.value = input.checked;
+        });
         break;
 
-      case 'Date':
-        inputGroupDiv = addEle(inputDiv, 'div', 'input-group date');
+      case 'EditBoolean':
+        input = addEle(inputDiv, 'input', 'js-switch');
+        input.setAttribute("type", "checkbox");
+        if (attribute.value)
+          input.setAttribute("checked", "true");
 
+        initSwitchery = new Switchery(input, {
+          //color: window.getComputedStyle(panel.panelTitle, null).getPropertyValue('color'),
+          color: '#5bc0de', // todo based on panel theme
+          secondaryColor: '#dfdfdf',
+          className: 'switchery',
+          disabled: false,
+          disabledOpacity: 0.5,
+          speed: '0.1s'
+        });
+        $(input).on('change', function () {
+          attribute.value = input.checked;
+        });
+        break;
+
+      case 'EditDate':
+        inputGroupDiv = addEle(inputDiv, 'div', 'input-group date');
         input = addEle(inputGroupDiv, 'input', 'form-control');
         if (attribute.placeHolder)
           input.setAttribute("placeHolder", attribute.placeHolder);
-        input.setAttribute("type", "Date");
-        input.setAttribute("maxlength", attribute.size);
         if (attribute.value)
           input.value = (1 + attribute.value.getMonth()) + '/' + attribute.value.getDate() + '/' + attribute.value.getFullYear();
-
         inputGroupSpan = addEle(inputGroupDiv, 'span', 'input-group-addon');
         inputGroupSpan.innerHTML = '<i class="fa fa-calendar"></i>';
-        $(inputGroupDiv).datepicker({autoclose: true, todayBtn: true, todayHighlight: true, showOnFocus: false});
+        $(inputGroupDiv).datepicker({
+          autoclose: true,
+          todayBtn: true,
+          todayHighlight: true,
+          showOnFocus: false
+        }).on('hide', function (e) {
+          validateInput();
+          e.preventDefault();
+        });
         panel.listeners.push(inputGroupDiv); // so we can avoid leakage on deleting panel
         break;
 
-      case 'Number':
+      case 'EditNumber':
         input = addEle(inputDiv, 'input', 'form-control');
         if (attribute.placeHolder)
           input.setAttribute("placeHolder", attribute.placeHolder);
         input.setAttribute("type", "number");
         input.setAttribute("maxlength", attribute.size);
-        if (attribute.value)
-          input.setAttribute("value", attribute.value);
+        input.setAttribute("value", attribute.value ? attribute.value : 0);
         break;
 
-      default: // String
+      case 'EditString':
         if (attribute.quickPick) {
           inputGroupDiv = addEle(inputDiv, 'div', 'input-group');
           input = addEle(inputGroupDiv, 'input', 'form-control');
@@ -3126,41 +3302,142 @@ BootstrapInterface.prototype.renderPanelBodyView = function (panel, command) {
         if (attribute.value)
           input.setAttribute("value", attribute.value);
         if (attribute.quickPick) {
-
           inputGroupSpan = addEle(inputGroupDiv, 'span', 'input-group-btn');
-
           inputGroupButton = addEle(inputGroupSpan, 'button', 'btn btn-default dropdown-toggle');
           inputGroupButton.type = 'button';
           inputGroupButton.setAttribute('data-toggle', 'dropdown');
           inputGroupButton.innerHTML = '<span class="caret"></span>';
-
-
           daItems = attribute.quickPick;
           daList = '';
           for (j = 0; j < daItems.length; j++) {
             daList += '<li><a href="#">' + daItems[j] + '</a></li>';
           }
-
           inputGroupDropDownMenu = addEle(inputGroupSpan, 'ul', 'dropdown-menu pull-right');
           inputGroupDropDownMenu.innerHTML = daList;
           $(inputGroupDropDownMenu).click(function (e) {
             input.value = e.originalEvent.srcElement.innerText;
+            validateInput();
             e.preventDefault();
           });
           panel.listeners.push(inputGroupDropDownMenu); // so we can avoid leakage on deleting panel
         }
+        break;
+
+      case 'ViewDate':
+        input = addEle(inputDiv, 'p', 'form-control-static');
+        if (attribute.value)
+          input.innerHTML = (1 + attribute.value.getMonth()) + '/' + attribute.value.getDate() + '/' + attribute.value.getFullYear();
+
+        break;
+
+      default: // View
+        input = addEle(inputDiv, 'p', 'form-control-static');
+        input.innerHTML = attribute.value;
+
+    }
+
+    /**
+     * When focus lost on attribute - validate it
+     */
+    var validateInput = function (event) {
+      switch (attribute.type) {
+        case 'Date':
+          attribute.value = (input.value === '') ? null : attribute.coerce(input.value);
+          if (attribute.value != null) {
+            var mm = attribute.value.getMonth() + 1;
+            var dd = attribute.value.getDate();
+            var yyyy = attribute.value.getFullYear();
+            if (mm < 10) mm = '0' + mm;
+            if (dd < 10) dd = '0' + dd;
+            input.value = mm + '/' + dd + '/' + yyyy;
+          } else {
+            input.value = '';
+          }
+          break;
+        default:
+          attribute.value = (input.value === '') ? null : attribute.coerce(input.value);
+          if (attribute.value != null)
+            input.value = attribute.value;
+          break;
+      }
+      attribute.validate(function () {
+      });
+    };
+    /**
+     * Validate when focus lost
+     */
+    $(input).on('focusout', validateInput);
+    panel.listeners.push(input); // so we can avoid leakage on deleting panel
+
+    /**
+     * Monitor state changes to attribute
+     */
+    attribute.onEvent('Validate', function () {
+      attribute._validationDone = true;
+    });
+    attribute.onEvent('StateChange', function () {
+      switch (mode + attribute.type) {
+        case 'EditBoolean':
+          if (attribute.value != input.checked)
+            $(input).click();
+          break;
+        case 'EditDate':
+          input.value = attribute.value ? '' + (1 + attribute.value.getMonth()) + '/' + attribute.value.getDate() + '/' + attribute.value.getFullYear() : '';
+          break;
+        case 'EditNumber':
+          input.value = attribute.value ? attribute.value : 0;
+          break;
+        case 'EditString':
+          input.value = attribute.value ? '' + attribute.value : '';
+          break;
+        case 'ViewDate':
+          input.innerHTML = attribute.value ? '' + (1 + attribute.value.getMonth()) + '/' + attribute.value.getDate() + '/' + attribute.value.getFullYear() : '';
+          break;
+        default: // View String
+          input.innerHTML = attribute.value;
+          break;
+      }
+      renderHelpText(attribute._validationDone ? attribute.validationMessage : '');
+      attribute._validationDone = false;
+    });
+    panel.attributeListeners.push(attribute); // so we can avoid leakage on deleting panel
+
+    /**
+     * For attribute error display
+     */
+    function renderHelpText(text) {
+      if (text) {
+        if (!helpTextDiv) {
+          helpTextDiv = document.createElement("div");
+          helpTextDiv.className = 'col-sm-9 col-sm-offset-3 has-error';
+          formGroup.appendChild(helpTextDiv);
+        }
+        helpTextDiv.innerHTML = '<span style="display: block;" class="help-block">' + text + '</span>';
+        $(formGroup).addClass('has-error');
+        if (inputGroupButton)
+          $(inputGroupButton).addClass('btn-danger');
+      } else {
+        setTimeout(function () {
+          if (helpTextDiv) {
+            $(helpTextDiv).remove();
+            helpTextDiv = null;
+          }
+        }, 250);
+        $(formGroup).removeClass('has-error');
+        if (inputGroupButton)
+          $(inputGroupButton).removeClass('btn-danger');
+      }
     }
   }
 
   /**
    * function to render List
    */
-
-  function renderList(list,theme) {
+  function renderList(list, theme) {
 
 
     var txtDiv = document.createElement("table");
-    txtDiv.className = 'table table-condensed table-bordered table-hover-'+theme;
+    txtDiv.className = 'table table-condensed table-bordered table-hover-' + theme;
     //bootstrapInterface.info(txtDiv.className);
 
     /**
@@ -3185,7 +3462,6 @@ BootstrapInterface.prototype.renderPanelBodyView = function (panel, command) {
       $(tBodyRow).click(function (e) {
         // bootstrapInterface.dispatch(new Request({type: 'Command', command: action}));
         bootstrapInterface.info('you picked #' + $(e.currentTarget).data("id"));
-        console.log('fuck ' + $(e.currentTarget).data("id"));
         e.preventDefault();
       });
 
@@ -3199,7 +3475,6 @@ BootstrapInterface.prototype.renderPanelBodyView = function (panel, command) {
 
   }
 
-
   /**
    * function to render Command
    */
@@ -3207,8 +3482,7 @@ BootstrapInterface.prototype.renderPanelBodyView = function (panel, command) {
 
     if (!panel.buttonDiv) {
       var formGroup = addEle(panel.panelForm, 'div', 'form-group');
-      //panel.buttonDiv = addEle(formGroup, 'div', 'col-sm-offset-3 col-sm-9'); // after form
-      panel.buttonDiv = addEle(formGroup, 'div', 'col-sm-9');
+      panel.buttonDiv = addEle(formGroup, 'div', indent ? 'col-sm-offset-3 col-sm-9' : 'col-sm-9');
     }
     var cmdTheme = command.theme || 'default';
     var button = addEle(panel.buttonDiv, 'button', 'btn btn-' + cmdTheme + ' btn-presentation', {type: 'button'});
