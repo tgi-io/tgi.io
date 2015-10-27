@@ -44,10 +44,19 @@
 <script type="text/javascript" src="lib/desktop.js"></script>
 
 <!--Interface Unique Init-->
-<script type="text/javascript" src="desktopInit.js"></script>
+<script>
+  var tgi = TGI.CORE();
+  var ui = new (TGI.INTERFACE.BOOTSTRAP().BootstrapInterface)({vendor: Date});
+</script>
+
+<!--Common Init-->
+<script type="text/javascript" src="init.js"></script>
 
 <!--Commands in order of Nav-->
 <script type="text/javascript" src="commands/about.js"></script>
+<script type="text/javascript" src="commands/tools/create-data-set.js"></script>
+<script type="text/javascript" src="commands/tools/tools.js"></script>
+
 <script type="text/javascript" src="commands/login.js"></script>
 
 <!--Start the App-->

@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.4.7',
+      version: '0.4.11',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -33,6 +33,8 @@ var TGI = {
       Workspace: Workspace,
       inheritPrototype: inheritPrototype,
       getInvalidProperties: getInvalidProperties,
+      getConstructorFromModelType: getConstructorFromModelType,
+      createModelFromModelType: createModelFromModelType,
       trim: trim,
       ltrim: ltrim,
       rtrim: rtrim,
@@ -612,6 +614,9 @@ Command.prototype.execute = function (context) {
       case 'Error':
         self._emitEvent('Error', obj);
         break;
+      case 'Aborted':
+        self.abort();
+        break;
       case 'Completed':
         for (var t in tasks) {
           if (tasks.hasOwnProperty(t)) {
@@ -1019,7 +1024,10 @@ var Model = function (args) {
   this._eventListeners = [];
   this._errorConditions = {};
 };
-// Methods
+Model._ModelConstructor = {};
+/**
+ * Methods
+ */
 Model.prototype.toString = function () {
   return "a " + this.modelType;
 };
@@ -1487,6 +1495,7 @@ function Transport(location, callback) {
     console.log('socket.io (' + self.location + ') disconnect: ' + reason);
   });
 }
+Transport.showLog=false; // set to true to show message
 /**
  * pub/sub thingies
  */
@@ -1495,6 +1504,8 @@ Transport.setMessageHandler = function (message, handler) {
   Transport.messageHandlers[message] = handler;
 };
 Transport.hostMessageProcess = function (obj, fn) {
+  if (Transport.showLog)
+    console.log('Transport.hostMessageProcess ' + JSON.stringify(obj));
   if (Transport.messageHandlers[obj.type]) {
     Transport.messageHandlers[obj.type](obj.contents, fn);
   } else {
@@ -1523,10 +1534,14 @@ Transport.prototype.send = function (message, callback) {
     return;
   }
   if (typeof callback != 'undefined') {
+    if (Transport.showLog)
+      console.log('Transport emit ' + JSON.stringify(message));
     self.socket.emit('ackmessage', message, function (msg) {
       callback.call(self, msg);
     });
   } else {
+    if (Transport.showLog)
+      console.log('Transport send ' + JSON.stringify(message));
     self.socket.send(message);
   }
 };
@@ -1998,6 +2013,8 @@ var Application = function (args) {
   this.set('brand', 'NEW APP');
 };
 Application.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Application = Application;
+
 
 /**
  * Methods
@@ -2124,6 +2141,7 @@ var Log = function (args) {
   this.modelType = "Log";
 };
 Log.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Log = Log;
 /**
  * Methods
  */
@@ -2151,6 +2169,7 @@ var Presentation = function (args) {
   this.modelType = "Presentation";
 };
 Presentation.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Presentation = Presentation;
 /*
  * Methods
  */
@@ -2253,6 +2272,7 @@ var Session = function (args) {
   this.set('active', false);
 };
 Session.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Session = Session;
 /*
  * Methods
  */
@@ -2357,9 +2377,10 @@ var User = function (args) {
   args.attributes.push(new Attribute({name: 'email', type: 'String(20)'}));
   Model.call(this, args);
   this.modelType = "User";
-  this.set('active',false);
+  this.set('active', false);
 };
 User.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.User = User;
 /**
  * tequila
  * workspace-class
@@ -2381,6 +2402,7 @@ function Workspace(args) {
   this.modelType = "Workspace";
 }
 Workspace.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Workspace = Workspace;
 /*
  * Methods
  */
@@ -2621,6 +2643,23 @@ var getInvalidProperties = function (args, allowedProperties) {
   }
   return props;
 };
+
+/**
+ * getConstructorFromModelType(modelType)
+ */
+var getConstructorFromModelType = function (modelType) {
+  return Model._ModelConstructor[modelType] || Model;
+};
+
+/**
+ * createModelFromModelType(modelType)
+ */
+var createModelFromModelType = function (modelType) {
+  var ProxyModel = getConstructorFromModelType(modelType);
+  return new ProxyModel();
+};
+
+
 
 /**---------------------------------------------------------------------------------------------------------------------
  * tgi-core/lib/utility/tgi-core-strings.source.js
@@ -3672,7 +3711,7 @@ RemoteStore.prototype.onConnect = function (location, callback, options) {
         return;
       }
       if (msg.type == 'Connected') {
-        console.log('Transport connected: ' + store.name);
+        //console.log('Transport connected: ' + store.name);
         store.storeProperty.isReady = true;
         RemoteStore.transport = store.transport; // todo a static connection not well designed
         callback(store);
@@ -3692,7 +3731,7 @@ RemoteStore.prototype.getModel = function (model, callback) {
   if (!model.attributes[0].value) throw new Error('ID not set');
   if (typeof callback != "function") throw new Error('callback required');
   this.transport.send(new Message('GetModel', model), function (msg) {
-    console.log('GetModel callback');
+    //console.log('GetModel callback');
     if (false && msg == 'Ack') { // todo wtf is this
       callback(model);
     } else if (msg.type == 'GetModelAck') {
@@ -3719,7 +3758,6 @@ RemoteStore.prototype.putModel = function (model, callback) {
   if (model.getObjectStateErrors().length) throw new Error('model has validation errors');
   if (typeof callback != "function") throw new Error('callback required');
   this.transport.send(new Message('PutModel', model), function (msg) {
-    console.log('PutModel callback');
     if (false && msg == 'Ack') { // todo wtf is this
       callback(model);
     } else if (msg.type == 'PutModelAck') {
@@ -3727,8 +3765,15 @@ RemoteStore.prototype.putModel = function (model, callback) {
       model.attributes = [];
       for (var a in c.attributes) {
         if (c.attributes.hasOwnProperty(a)) {
-          var attrib = new Attribute(c.attributes[a].name, c.attributes[a].type);
-          attrib.value = c.attributes[a].value;
+          var attrib;
+          if (c.attributes[a].type=='Model') {
+            var v = new Attribute.ModelID(new Model());
+            v.value = c.attributes[a].value;
+            attrib = new Attribute({name:c.attributes[a].name, type:'Model',value:v});
+          } else {
+            attrib = new Attribute(c.attributes[a].name, c.attributes[a].type);
+            attrib.value = c.attributes[a].value;
+          }
           model.attributes.push(attrib);
         }
       }
@@ -3741,12 +3786,13 @@ RemoteStore.prototype.putModel = function (model, callback) {
     }
   });
 };
+
 RemoteStore.prototype.deleteModel = function (model, callback) {
   if (!(model instanceof Model)) throw new Error('argument must be a Model');
   if (model.getObjectStateErrors().length) throw new Error('model has validation errors');
   if (typeof callback != "function") throw new Error('callback required');
   this.transport.send(new Message('DeleteModel', model), function (msg) {
-    console.log('DeleteModel callback');
+    //console.log('DeleteModel callback');
     if (false && msg == 'Ack') { // todo wtf is this
       callback(model);
     } else if (msg.type == 'DeleteModelAck') {

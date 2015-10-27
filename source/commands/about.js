@@ -18,7 +18,7 @@
     contents: aboutPresentation
   });
 
-  navContents.push(aboutCommand);
+  site.navContents.push(aboutCommand);
 
 
 }());

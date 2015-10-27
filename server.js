@@ -19,7 +19,7 @@ app.use(serveStatic('source'));
 //app.use(serveIndex('source', {icons: true}));
 app.use(errorHandler({dumpExceptions: true, showStack: true}));
 
-app.use(function(req, res, next) { // 404 equiv
+app.use(function (req, res, next) { // 404 equiv
   res.sendFile(__dirname + '/public/index.html');
 });
 

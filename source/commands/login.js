@@ -5,28 +5,31 @@
 (function () {
   var loginPresentation = new tgi.Presentation();
   var storePicks = ['MemoryStore', 'LocalStore', 'HostStore'];
+  var login, password;
   loginPresentation.set('contents', [
-    'Please login to see the fun stuff.',
+    '>',
+    '**Please login**',
     '-',
-    new tgi.Attribute({name: 'login', label: 'Login', type: 'String(20)', hint: {required: true}, value: ''}),
-    new tgi.Attribute({name: 'password', label: 'Password', type: 'String(20)', hint: {password: true}, value: ''}),
-    new tgi.Attribute({name: 'store', label: 'Store', type: 'String', quickPick: storePicks, value: '(memory store)'}),
-    '-',
-    new tgi.Command({
-      name: 'Login', type: 'Function', theme: 'info', icon: 'fa-sign-in', contents: function () {
-        loginPresentation.validate(function () {
-
-          if (loginPresentation.validationMessage) {
-            app.info('error: ' + loginPresentation.validationMessage);
-          } else {
-            app.info('no error');
-            // $("#panel1").show(); // todo don't hard code ?
-            // app.setAppPresentation(privateMenu);
-          }
-        });
-      }
-    })
+    login = new tgi.Attribute({
+      name: 'login',
+      label: 'Login',
+      type: 'String(20)',
+      validationRule: {required: true},
+      value: 'admin'
+    }),
+    password = new tgi.Attribute({
+      name: 'password',
+      label: 'Password',
+      type: 'String(20)',
+      validationRule: {required: true},
+      hint: {password: true},
+      value: 'tgi'
+    }),
+    //new tgi.Attribute({name: 'store', label: 'Store', type: 'String', quickPick: storePicks, value: '(memory store)'}),
+    '>',
+    new tgi.Command({name: 'Login', type: 'Function', theme: 'info', icon: 'fa-sign-in', contents: loginSession})
   ]);
+
   var loginCommand = new tgi.Command({
     name: 'login',
     type: 'Presentation',
@@ -35,6 +38,38 @@
     presentationMode: 'Edit',
     contents: loginPresentation
   });
-  navContents.push('-'); // Right justify if interface supports
-  navContents.push(loginCommand);
+
+  site.navContents.push('-'); // Right justify if interface supports
+  site.navContents.push(loginCommand);
+
+  /**
+   * After start, force login
+   */
+  setTimeout(function () {
+    loginCommand.execute(ui);
+  }, 0);
+
+  /**
+   * Start session when info submitted
+   */
+  function loginSession() {
+    tgi.Transport.showLog=false;
+    try {
+      loginPresentation.validate(function () {
+        if (loginPresentation.validationMessage) {
+          app.info(loginPresentation.validationMessage != 'contents has validation errors' ? loginPresentation.validationMessage : 'login and password required');
+          return;
+        }
+        site.session.startSession(site.hostStore, login.value, password.value, '*', function (err, session) {
+          if (err)
+            app.info('session err say ' + err);
+          else
+            app.info('it worked');
+        });
+
+      });
+    } catch (e) {
+      console.log('err ' + e);
+    }
+  }
 }());

@@ -39,10 +39,20 @@
 <script type="text/javascript" src="lib/mobile.js"></script>
 
 <!--Interface Unique Init-->
-<script type="text/javascript" src="mobileInit.js"></script>
+<script>
+  var tgi = TGI.CORE();
+  var ui = new (TGI.INTERFACE.FRAMEWORK7().Framework7Interface)({vendor: Framework7});
+</script>
+
+<!--Common Init-->
+<script type="text/javascript" src="init.js"></script>
+
 
 <!--Commands in order of Nav-->
 <script type="text/javascript" src="commands/about.js"></script>
+<script type="text/javascript" src="commands/tools/tools.js"></script>
+<script type="text/javascript" src="commands/tools/create-data-set.js"></script>
+
 <script type="text/javascript" src="commands/login.js"></script>
 
 <!--Start the App-->
