@@ -28,6 +28,8 @@ var testSpec = function(spec,TGI) {
   var Workspace = tgiCore.Workspace;
   var inheritPrototype = tgiCore.inheritPrototype;
   var getInvalidProperties = tgiCore.getInvalidProperties;
+  var getConstructorFromModelType = tgiCore.getConstructorFromModelType;
+  var createModelFromModelType = tgiCore.createModelFromModelType;
   var trim = tgiCore.trim;
   var ltrim = tgiCore.ltrim;
   var rtrim = tgiCore.rtrim;
@@ -1220,6 +1222,33 @@ spec.runnerInterfaceMethods = function (SurrogateInterface) {
         new Application({interface: new SurrogateInterface()}).info();
       });
     });
+    spec.heading('done(text)', function () {
+      spec.paragraph('Display done to user in background of primary presentation.');
+      spec.example('must set interface before invoking', Error('interface not set'), function () {
+        new Application().done();
+      });
+      spec.example('must supply the text info', Error('text parameter required'), function () {
+        new Application({interface: new SurrogateInterface()}).done();
+      });
+    });
+    spec.heading('warn(text)', function () {
+      spec.paragraph('Display warning to user in background of primary presentation.');
+      spec.example('must set interface before invoking', Error('interface not set'), function () {
+        new Application().warn();
+      });
+      spec.example('must supply the text info', Error('text parameter required'), function () {
+        new Application({interface: new SurrogateInterface()}).warn();
+      });
+    });
+    spec.heading('err(text)', function () {
+      spec.paragraph('Display error to user in background of primary presentation.');
+      spec.example('must set interface before invoking', Error('interface not set'), function () {
+        new Application().err();
+      });
+      spec.example('must supply the text info', Error('text parameter required'), function () {
+        new Application({interface: new SurrogateInterface()}).err();
+      });
+    });
     spec.heading('ok(prompt, callback)', function () {
       spec.paragraph('Pause before proceeding');
       spec.example('must set interface before invoking', Error('interface not set'), function () {
@@ -1809,14 +1838,14 @@ spec.test('tgi-core/lib/tgi-core-message.spec.js', 'Message', 'between host and 
  * tgi-core/lib/tgi-core-model.spec.js
  */
 spec.test('tgi-core/lib/tgi-core-model.spec.js', 'Model', 'abstracts entities using a collection of attributes', function (callback) {
-  spec.testModel(Model);
+  spec.testModel(Model,true);
 });
 
 /**
  * test Model and Models
  */
-spec.testModel = function (SurrogateModel) {
-  if (SurrogateModel.modelType!='Model') {
+spec.testModel = function (SurrogateModel,root) {
+  if (!root) {
     spec.mute(true);
   }
   spec.heading('CONSTRUCTOR', function () {
@@ -2038,7 +2067,7 @@ spec.testModel = function (SurrogateModel) {
       }
     });
   });
-  if (SurrogateModel.modelType!='Model') {
+  if (SurrogateModel.modelType != 'Model') {
     var wasMuted = spec.mute(false).testsCreated;
     spec.paragraph('*' + wasMuted + ' model tests applied*');
   }
@@ -3201,6 +3230,30 @@ spec.test('tgi-core/lib/models/tgi-core-model-application.spec.js', 'Application
         new Application().dispatch(new Request({type: 'Command', command: new Command()}), true);
       });
     });
+    spec.heading('info(text)', function () {
+      spec.paragraph('Display info to user in background of primary presentation.');
+      spec.example('must set interface before invoking', Error('interface not set'), function () {
+        new Application().info(); // see Interface for more info
+      });
+    });
+    spec.heading('done(text)', function () {
+      spec.paragraph('Display done to user in background of primary presentation.');
+      spec.example('must set interface before invoking', Error('interface not set'), function () {
+        new Application().done(); // see Interface for more info
+      });
+    });
+    spec.heading('warn(text)', function () {
+      spec.paragraph('Display info to user in background of primary presentation.');
+      spec.example('must set interface before invoking', Error('interface not set'), function () {
+        new Application().warn(); // see Interface for more info
+      });
+    });
+    spec.heading('err(text)', function () {
+      spec.paragraph('Display info to user in background of primary presentation.');
+      spec.example('must set interface before invoking', Error('interface not set'), function () {
+        new Application().err(); // see Interface for more info
+      });
+    });
     spec.heading('ok(prompt, callback)', function () {
       spec.paragraph('Pause before proceeding');
       spec.example('must set interface before invoking', Error('interface not set'), function () {
@@ -3561,6 +3614,94 @@ spec.test('/tgi-core/lib/models/tgi-core-model-session.spec.js', 'Session', 'for
         });
       });
     });
+    spec.heading('INTEGRATION TEST', function () {
+      spec.example('simulate logging in etc', spec.asyncResults(true), function (callback) {
+
+        var self = this;
+        var store = new MemoryStore();
+        var session1 = new Session();
+        var session2 = new Session();
+
+        var user1 = new User(), name1 = 'jack', pass1 = 'wack', ip1 = '123';
+        user1.set('name', name1);
+        user1.set('password', pass1);
+        user1.set('active', true);
+
+        var user2 = new User(), name2 = 'jill', pass2 = 'pill', ip2 = '456';
+        user2.set('name', name2);
+        user2.set('password', pass2);
+        user2.set('active', true);
+
+        // start with empty store and add some users
+        store.putModel(user1, userStored);
+        store.putModel(user2, userStored);
+
+
+        // callback after users stored
+        function userStored(model, error) {
+          if (typeof error != 'undefined') {
+            callback(error);
+            return;
+          }
+          if (user1.get('id') && user2.get('id')) {
+            // users added to store now log them both in and also generate 2 errors
+            self.goodCount = 0;
+            self.badCount = 0;
+            session1.startSession(store, name1, 'badpassword', ip1, usersStarted);
+            session1.startSession(store, name1, pass1, ip1, usersStarted);
+            session2.startSession(store, 'john', pass2, ip2, usersStarted);
+            session2.startSession(store, name2, pass2, ip2, usersStarted);
+          }
+        }
+
+        // callback after session started called
+        function usersStarted(err, session) {
+          if (err)
+            self.badCount++;
+          else
+            self.goodCount++;
+
+          if (self.badCount == 2 && self.goodCount == 2) {
+            // Resume session1 correctly
+            new Session().resumeSession(store, ip1, session1.get('passCode'), sessionResumed_Test1);
+          }
+        }
+        function sessionResumed_Test1(err, session) {
+          if (err)
+            callback(Error('sessionResumed_Test1 failed'));
+          else
+          // Resume session2 with wrong passcode
+            new Session().resumeSession(store, ip2, 'no more secrets', sessionResumed_Test2);
+        }
+        function sessionResumed_Test2(err, session) {
+          if (err)
+          // Resume session2 correctly now after failing
+            new Session().resumeSession(store, ip2, session2.get('passCode'), sessionResumed_Test3);
+          else
+            callback(Error('sessionResumed_Test2 failed'));
+        }
+        function sessionResumed_Test3(err, session) {
+          if (err)
+            callback(Error('sessionResumed_Test3 failed:  ' + err));
+          else
+          // Now we end this session
+            session.endSession(store, function (err, session) {
+              if (err)
+                callback(Error('session.endSession failed: '+err));
+              else
+              // Now try restoring again and it should fail
+                new Session().resumeSession(store, ip2, session2.get('passCode'), sessionResumed_Test4);
+            });
+        }
+        function sessionResumed_Test4(err, session) {
+          if (err)
+            callback(Error('sessionResumed_Test4 failed'));
+          else
+            callback(true);
+        }
+      });
+
+    });
     // spec.runnerSessionIntegration();
   });
 });
@@ -3671,7 +3812,7 @@ spec.test('tgi-utility/lib/tgi-utility-arrays.test.js', 'Array Functions', 'desc
  */
 spec.test('tgi-utility/lib/tgi-utility-objects.test.js', 'Object Functions', 'description', function (callback) {
   spec.heading('inheritPrototype(p)', function () {
-    spec.paragraph('kinda sorta class like');
+    spec.paragraph('[deprecated] ex: User.prototype = Object.create(Model.prototype);');
     spec.example('Cannot pass null', undefined, function () {
       this.shouldThrowError('*', function () {
         inheritPrototype(null);
@@ -3711,6 +3852,35 @@ spec.test('tgi-utility/lib/tgi-utility-objects.test.js', 'Object Functions', 'de
     spec.example('invalid property', 0, function () {
       // no unknown properties
       return getInvalidProperties({name: 'name', value: 'Kahn'}, ['name', 'value']).length;
+    });
+  });
+  spec.heading('getConstructorFromModelType(modelType)', function () {
+    spec.example('returns Model constructor if type not registered', Model, function () {
+      return getConstructorFromModelType();
+    });
+    spec.example('registered models return the constructor function', User, function () {
+      return getConstructorFromModelType('User');
+    });
+    spec.example('objects created utilize proper constructor', false, function () {
+      var ProxyModel = getConstructorFromModelType('User');
+      var proxyModel = new ProxyModel();
+      return proxyModel.get('active');
+    });
+    spec.example('Core models are known', undefined, function () {
+      this.shouldBeTrue(getConstructorFromModelType('User') == User);
+      this.shouldBeTrue(getConstructorFromModelType('Session') == Session);
+      this.shouldBeTrue(getConstructorFromModelType('Workspace') == Workspace);
+      this.shouldBeTrue(getConstructorFromModelType('Presentation') == Presentation);
+      this.shouldBeTrue(getConstructorFromModelType('Log') == Log);
+      this.shouldBeTrue(getConstructorFromModelType('Application') == Application);
+    });
+  });
+  spec.heading('createModelFromModelType', function () {
+    spec.example('returns instance of Model if type not registered', 'Model', function () {
+      return createModelFromModelType().modelType;
+    });
+    spec.example('objects created utilize proper constructor', false, function () {
+      return createModelFromModelType('User').get('active');
     });
   });
 });

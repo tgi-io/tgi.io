@@ -4,7 +4,7 @@
 TGI.INTERFACE = TGI.INTERFACE || {};
 TGI.INTERFACE.BOOTSTRAP = function () {
   return {
-    version: '0.1.0',
+    version: '0.1.1',
     BootstrapInterface: BootstrapInterface
   };
 };
@@ -989,78 +989,265 @@ BootstrapInterface.prototype.htmlDialog = function () {
 };
 
 BootstrapInterface.prototype.info = function (text) {
-  /*
-   var bootstrapInterface = this;
-   if (!text || typeof text !== 'string') throw new Error('text required');
-   var infoClass = ' class="text-center text-info" ';
-   var infoStyle = ' style="margin-top: 0; margin-bottom: 4px;" ';
-   this.doc.navBarAlert.innerHTML = '<h5 ' + infoClass + infoStyle + '>' + text + '</h5>';
-   $(this.doc.navBarAlert).click(function (e) {
-   bootstrapInterface.doc.navBarAlert.innerHTML = '';
-   e.preventDefault();
-   });
-   setTimeout(function () {
-   bootstrapInterface.doc.navBarAlert.innerHTML = '';
-   },3000);
-   */
   var self = this;
-  var notify = $.notify({
-    // options
-    icon: 'glyphicon glyphicon-info-sign',
-    title: 'Information',
-    message: text,
-    url: 'https://github.com/mouse0270/bootstrap-notify',
-    target: '_blank'
-  }, {
-    // settings
-    element: 'body',
-    position: null,
-    type: "info",
-    allow_dismiss: true,
-    newest_on_top: true,
-    placement: {
-      from: "top",
-      align: "right"
+  var notify = $.notify(
+    {
+      /**
+       * options
+       */
+      icon: 'glyphicon glyphicon-info-sign',
+      title: 'Information',
+      message: text,
+      //url: 'https://github.com/mouse0270/bootstrap-notify',
+      //target: '_blank'
     },
-    offset: {
-      x: 20,
-      y: self.doc.navBarHeader.offsetHeight+20
-    },
-    spacing: 10,
-    z_index: 1031,
-    delay: 0,
-    timer: 1000,
-    //url_target: '_blank',
-    mouse_over: null,
-    animate: {
-      enter: 'animated fadeInDown',
-      exit: 'animated fadeOutUp'
-    },
-    onShow: null,
-    onShown: null,
-    onClose: null,
-    onClosed: null,
-    icon_type: 'class',
-    template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
-    '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
-    '<h4>' +
-    '<span data-notify="icon"></span> ' +
-    '<span data-notify="title">{1}</span>' +
-    '</h4>' +
-    '<span data-notify="message">{2}</span>' +
-    '<div class="progress" data-notify="progressbar">' +
-    '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
-    '</div>' +
-      //'<a href="{3}" target="{4}" data-notify="url"></a>' +
-    '</div>'
-  });
-
+    {
+      /**
+       * settings
+       */
+      element: 'body',
+      position: null,
+      type: "info",
+      allow_dismiss: true,
+      newest_on_top: true,
+      placement: {
+        from: "top",
+        align: "right"
+      },
+      offset: {
+        x: 20,
+        y: self.doc.navBarHeader.offsetHeight + 20
+      },
+      spacing: 10,
+      z_index: 1031,
+      delay: 0,
+      timer: 1000,
+      //url_target: '_blank',
+      mouse_over: null,
+      animate: {
+        enter: 'animated fadeInDown',
+        exit: 'animated fadeOutUp'
+      },
+      onShow: null,
+      onShown: null,
+      onClose: null,
+      onClosed: null,
+      icon_type: 'class',
+      template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
+      '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
+      '<h4>' +
+      '<span data-notify="icon"></span> ' +
+      '<span data-notify="title">{1}</span>' +
+      '</h4>' +
+      '<span data-notify="message">{2}</span>' +
+      '<div class="progress" data-notify="progressbar">' +
+      '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
+      '</div>' +
+        //'<a href="{3}" target="{4}" data-notify="url"></a>' +
+      '</div>'
+    }
+  );
   setTimeout(function () {
     notify.close();
   }, 3000);
-
-
 };
+
+
+BootstrapInterface.prototype.done = function (text) {
+  var self = this;
+  var notify = $.notify(
+    {
+      /**
+       * options
+       */
+      icon: 'glyphicon glyphicon-saved',
+      title: 'Done',
+      message: text
+      //url: 'https://github.com/mouse0270/bootstrap-notify',
+      //target: '_blank'
+    },
+    {
+      /**
+       * settings
+       */
+      element: 'body',
+      position: null,
+      type: "success",
+      allow_dismiss: true,
+      newest_on_top: true,
+      placement: {
+        from: "top",
+        align: "right"
+      },
+      offset: {
+        x: 20,
+        y: self.doc.navBarHeader.offsetHeight + 20
+      },
+      spacing: 10,
+      z_index: 1031,
+      delay: 0,
+      timer: 1000,
+      //url_target: '_blank',
+      mouse_over: null,
+      animate: {
+        enter: 'animated fadeInDown',
+        exit: 'animated fadeOutUp'
+      },
+      onShow: null,
+      onShown: null,
+      onClose: null,
+      onClosed: null,
+      icon_type: 'class',
+      template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
+      '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
+      '<h4>' +
+      '<span data-notify="icon"></span> ' +
+      '<span data-notify="title">{1}</span>' +
+      '</h4>' +
+      '<span data-notify="message">{2}</span>' +
+      '<div class="progress" data-notify="progressbar">' +
+      '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
+      '</div>' +
+        //'<a href="{3}" target="{4}" data-notify="url"></a>' +
+      '</div>'
+    }
+  );
+  setTimeout(function () {
+    notify.close();
+  }, 3000);
+};
+
+BootstrapInterface.prototype.warn = function (text) {
+  var self = this;
+  var notify = $.notify(
+    {
+      /**
+       * options
+       */
+      icon: 'glyphicon glyphicon-exclamation-sign',
+      title: 'Warning',
+      message: text,
+      //url: 'https://github.com/mouse0270/bootstrap-notify',
+      //target: '_blank'
+    },
+    {
+      /**
+       * settings
+       */
+      element: 'body',
+      position: null,
+      type: "warning",
+      allow_dismiss: true,
+      newest_on_top: true,
+      placement: {
+        from: "top",
+        align: "right"
+      },
+      offset: {
+        x: 20,
+        y: self.doc.navBarHeader.offsetHeight + 20
+      },
+      spacing: 10,
+      z_index: 1031,
+      delay: 0,
+      timer: 1000,
+      //url_target: '_blank',
+      mouse_over: null,
+      animate: {
+        enter: 'animated fadeInDown',
+        exit: 'animated fadeOutUp'
+      },
+      onShow: null,
+      onShown: null,
+      onClose: null,
+      onClosed: null,
+      icon_type: 'class',
+      template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
+      '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
+      '<h4>' +
+      '<span data-notify="icon"></span> ' +
+      '<span data-notify="title">{1}</span>' +
+      '</h4>' +
+      '<span data-notify="message">{2}</span>' +
+      '<div class="progress" data-notify="progressbar">' +
+      '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
+      '</div>' +
+        //'<a href="{3}" target="{4}" data-notify="url"></a>' +
+      '</div>'
+    }
+  );
+  setTimeout(function () {
+    notify.close();
+  }, 3000);
+};
+
+
+BootstrapInterface.prototype.err = function (text) {
+  var self = this;
+  var notify = $.notify(
+    {
+      /**
+       * options
+       */
+      icon: 'glyphicon glyphicon-warning-sign',
+      title: 'Error',
+      message: text,
+      //url: 'https://github.com/mouse0270/bootstrap-notify',
+      //target: '_blank'
+    },
+    {
+      /**
+       * settings
+       */
+      element: 'body',
+      position: null,
+      type: "danger",
+      allow_dismiss: true,
+      newest_on_top: true,
+      placement: {
+        from: "top",
+        align: "right"
+      },
+      offset: {
+        x: 20,
+        y: self.doc.navBarHeader.offsetHeight + 20
+      },
+      spacing: 10,
+      z_index: 1031,
+      delay: 0,
+      timer: 1000,
+      //url_target: '_blank',
+      mouse_over: null,
+      animate: {
+        enter: 'animated fadeInDown',
+        exit: 'animated fadeOutUp'
+      },
+      onShow: null,
+      onShown: null,
+      onClose: null,
+      onClosed: null,
+      icon_type: 'class',
+      template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
+      '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
+      '<h4>' +
+      '<span data-notify="icon"></span> ' +
+      '<span data-notify="title">{1}</span>' +
+      '</h4>' +
+      '<span data-notify="message">{2}</span>' +
+      '<div class="progress" data-notify="progressbar">' +
+      '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
+      '</div>' +
+        //'<a href="{3}" target="{4}" data-notify="url"></a>' +
+      '</div>'
+    }
+  );
+  setTimeout(function () {
+    notify.close();
+  }, 3000);
+};
+
+
+
 BootstrapInterface.prototype.ok = function (prompt, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
   if (typeof callback != 'function') throw new Error('callback required');

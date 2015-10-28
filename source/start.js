@@ -4,8 +4,6 @@
  * Final script starts app
  */
 
-
-
 (function () {
   var RemoteStore = TGI.STORE.REMOTE().RemoteStore;
   site.hostStore = new RemoteStore({name: 'Host Test Store'});

@@ -45,9 +45,9 @@
   /**
    * After start, force login
    */
-  setTimeout(function () {
-    loginCommand.execute(ui);
-  }, 0);
+  //setTimeout(function () {
+  //  loginCommand.execute(ui);
+  //}, 0);
 
   /**
    * Start session when info submitted
@@ -62,7 +62,7 @@
         }
         site.session.startSession(site.hostStore, login.value, password.value, '*', function (err, session) {
           if (err)
-            app.info('session err say ' + err);
+            app.err('' + err);
           else
             app.info('it worked');
         });

@@ -4,7 +4,7 @@
 TGI.INTERFACE = TGI.INTERFACE || {};
 TGI.INTERFACE.FRAMEWORK7 = function () {
   return {
-    version: '0.0.3',
+    version: '0.0.4',
     Framework7Interface: Framework7Interface
   };
 };
@@ -43,13 +43,13 @@ Framework7Interface.prototype = Object.create(Interface.prototype);
 Framework7Interface.prototype.canMock = function () {
   return this.vendor ? true : false;
 };
-Framework7Interface.prototype.start = function (application, presentation, callBack) {
+Framework7Interface.prototype.start = function (application, presentation, callback) {
   if (!(application instanceof Application)) throw new Error('Application required');
   if (!(presentation instanceof Presentation)) throw new Error('presentation required');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (typeof callback != 'function') throw new Error('callback required');
   this.application = application;
   this.presentation = presentation;
-  this.startCallback = callBack;
+  this.startCallback = callback;
   if (!this.vendor) throw new Error('Error initializing Framework7');
   try {
     if (!Framework7Interface._f7) {
@@ -77,7 +77,7 @@ Framework7Interface.prototype.dispatch = function (request, response) {
         // this.activatePanel(request.command);
         requestHandled = true;
       } else {
-        requestHandled = !this.application.dispatch(request);
+        requestHandled = this.application.dispatch(request);
       }
     }
     if (!requestHandled && this.startcallback) {
@@ -89,18 +89,13 @@ Framework7Interface.prototype.dispatch = function (request, response) {
     }
   }
 };
-Framework7Interface.prototype.render = function (item, presentationMode, callback) {
+Framework7Interface.prototype.render = function (command, callback) {
+
   var framework7Interface = this;
-  var presentation = item;
-  /* todo broke tests :(
-  if (false === (presentation instanceof Presentation)) throw new Error('Presentation object required');
-  if (typeof presentationMode !== 'string') throw new Error('presentationMode required');
-  if (!contains(Command.getPresentationModes(), presentationMode)) throw new Error('Invalid presentationMode: ' + presentationMode);
-  if (callback && typeof callback != 'function') throw new Error('optional second argument must a commandRequest callback function');
-*/
-  if (item instanceof Command) {
-    presentation = item.contents;
-  }
+  if (false === (command instanceof Command)) throw new Error('Command object required');
+
+  var presentation = command.contents;
+
   /**
    * find the presentation on the toolbar first
    */
@@ -121,8 +116,6 @@ Framework7Interface.prototype.render = function (item, presentationMode, callbac
       return;
     }
   }
-//framework7Interface.toolBarMoreCommands = [];
-
 };
 
 /**
@@ -259,26 +252,38 @@ Framework7Interface.prototype.updateBrand = function (text) {
  */
 Framework7Interface.prototype.info = function (text) {
   if (!text || typeof text !== 'string') throw new Error('text required');
-  Framework7Interface._f7.addNotification({title: this.application.get('brand'), message: text, hold:3000});
+  Framework7Interface._f7.addNotification({title: 'Information', message: text, hold:3000});
 };
-Framework7Interface.prototype.ok = function (prompt, callBack) {
+Framework7Interface.prototype.done = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+  Framework7Interface._f7.addNotification({title: 'Success', message: text, hold:3000});
+};
+Framework7Interface.prototype.warn = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+  Framework7Interface._f7.addNotification({title: 'Warning', message: text, hold:3000});
+};
+Framework7Interface.prototype.err = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+  Framework7Interface._f7.addNotification({title: 'ERROR', message: text, hold:3000});
+};
+Framework7Interface.prototype.ok = function (prompt, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (typeof callback != 'function') throw new Error('callback required');
   if (this.okPending) {
     delete this.okPending;
-    callBack();
+    callback();
   } else {
     Framework7Interface._f7.alert(prompt.replace(/\n/g,'<br>'), this.application.get('brand'), function () {
-      callBack();
+      callback();
     });
   }
 };
-Framework7Interface.prototype.yesno = function (prompt, callBack) {
+Framework7Interface.prototype.yesno = function (prompt, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (typeof callback != 'function') throw new Error('callback required');
   if (this.yesnoPending) {
     delete this.yesnoPending;
-    callBack(this.yesnoResponse);
+    callback(this.yesnoResponse);
   } else {
     Framework7Interface._f7.modal({
       text:prompt.replace(/\n/g,'<br>'),
@@ -287,43 +292,43 @@ Framework7Interface.prototype.yesno = function (prompt, callBack) {
       buttons: [{
         text: 'Yes',
         onClick: function () {
-          callBack(true);
+          callback(true);
         }
       },{
         text: 'No',
         onClick: function () {
-          callBack(false);
+          callback(false);
         }
       }]
     });
   }
 };
-Framework7Interface.prototype.ask = function (prompt, attribute, callBack) {
+Framework7Interface.prototype.ask = function (prompt, attribute, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
-  if (false === (attribute instanceof Attribute)) throw new Error('instance of Attribute a required parameter');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (false === (attribute instanceof Attribute)) throw new Error('attribute or callback expected');
+  if (typeof callback != 'function') throw new Error('callback required');
   if (this.askPending) {
     delete this.askPending;
-    callBack(this.askResponse);
+    callback(this.askResponse);
   } else {
     Framework7Interface._f7.prompt(prompt.replace(/\n/g,'<br>'), this.application.get('brand'),
       function (answer) {
-        callBack(answer);
+        callback(answer);
       },
       function () {
-        callBack();
+        callback();
       }
     );
   }
 };
-Framework7Interface.prototype.choose = function (prompt, choices, callBack) {
+Framework7Interface.prototype.choose = function (prompt, choices, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
   if (false === (choices instanceof Array)) throw new Error('choices array required');
   if (!choices.length) throw new Error('choices array empty');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (typeof callback != 'function') throw new Error('callback required');
   if (this.choosePending) {
     delete this.choosePending;
-    callBack(Interface.firstMatch(this.chooseResponse, choices));
+    callback(Interface.firstMatch(this.chooseResponse, choices));
   } else {
     var groups = [];
     groups.push([{text: prompt.replace(/\n/g,'<br>'), label: true}]);
@@ -345,47 +350,47 @@ Framework7Interface.prototype.choose = function (prompt, choices, callBack) {
    * Since framework does not return any info in callback
    */
   function cbCancel() {
-    callBack();
+    callback();
   }
 
   function cb0() {
-    callBack(choices[0]);
+    callback(choices[0]);
   }
 
   function cb1() {
-    callBack(choices[1]);
+    callback(choices[1]);
   }
 
   function cb2() {
-    callBack(choices[2]);
+    callback(choices[2]);
   }
 
   function cb3() {
-    callBack(choices[3]);
+    callback(choices[3]);
   }
 
   function cb4() {
-    callBack(choices[4]);
+    callback(choices[4]);
   }
 
   function cb5() {
-    callBack(choices[5]);
+    callback(choices[5]);
   }
 
   function cb6() {
-    callBack(choices[6]);
+    callback(choices[6]);
   }
 
   function cb7() {
-    callBack(choices[7]);
+    callback(choices[7]);
   }
 
   function cb8() {
-    callBack(choices[8]);
+    callback(choices[8]);
   }
 
   function cb9() {
-    callBack(choices[9]);
+    callback(choices[9]);
   }
 };
 /**---------------------------------------------------------------------------------------------------------------------
@@ -645,7 +650,10 @@ Framework7Interface.prototype.showView = function (toolBarCommand) {
           var toolBarCommandNo = parseInt(right(rootID, rootID.length - 6)) - 1;
           var subMenuNo = parseInt(right(htmlID, htmlID.length - dash)) - 1;
           var dashizzle = framework7Interface.toolBarCommands[toolBarCommandNo].subMenu[subMenuNo];
-          dashizzle.command.execute(framework7Interface);
+          if (dashizzle.command.type == 'Stub')
+            framework7Interface.info('The ' + dashizzle.command.name + ' feature is not available at this time.');
+          else
+            dashizzle.command.execute(framework7Interface);
         });
       }
     }

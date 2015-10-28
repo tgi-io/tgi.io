@@ -3,22 +3,23 @@
  */
 (function () {
   var aboutPresentation = new tgi.Presentation();
-  var counter = new tgi.Attribute({name: 'Counter', type: 'Number', value: 100});
-  aboutPresentation.set('contents', [
-    '# About tgi.io',
-    '-',
-    'text to come ...',
-    counter
-  ]);
+  aboutPresentation.preRenderCallback = function (command, callback) {
+    site.loadPanel(command, 'commands/about.md', callback);
+  };
   var aboutCommand = new tgi.Command({
     name: 'about',
     type: 'Presentation',
-    theme: 'info',
     icon: 'fa-info-circle',
     contents: aboutPresentation
   });
-
   site.navContents.push(aboutCommand);
 
+  /**
+   * After start, force about
+   */
+  setTimeout(function () {
+    console.log('shizzle');
+    aboutCommand.execute(ui);
+  }, 0);
 
 }());

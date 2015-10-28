@@ -4,7 +4,9 @@
 
 (function () {
 
-  // System model
+  /**
+   * System model
+   */
   var SysInfo = function (args) {
     tgi.Model.call(this, args);
     this.modelType = "SysInfo";
@@ -23,13 +25,13 @@
           var task = this;
           try {
             var sysInfoList = new tgi.List(new SysInfo());
-            site.hostStore.getList(sysInfoList, {}, {shit: 1}, function (model, error) {
+            site.hostStore.getList(sysInfoList, {}, {}, function (model, error) {
               if (typeof error != 'undefined') {
-                app.info('error getting list' + error);
+                app.err('error getting list' + error);
                 task.abort();
               } else {
                 if (sysInfoList.length() > 0) {
-                  app.info('database already exists');
+                  app.warn('database already exists');
                   task.abort();
                 } else {
                   task.complete();
@@ -37,7 +39,7 @@
               }
             });
           } catch (e) {
-            app.info('error getting list' + e);
+            app.err('error getting list' + e);
           }
         },
         /**
@@ -50,14 +52,14 @@
             sysInfo.set('dataRevision', 1);
             site.hostStore.putModel(sysInfo, function (model, error) {
               if (typeof error != 'undefined') {
-                app.info('error creating sysInfo' + error);
+                app.err('error creating sysInfo' + error);
                 task.abort();
               } else {
                 task.complete();
               }
             });
           } catch (e) {
-            app.info('error creating SysInfo' + e);
+            app.err('error creating SysInfo' + e);
           }
         },
         /**
@@ -74,30 +76,24 @@
             user.set('lastName', 'Administrator');
             site.hostStore.putModel(user, function (model, error) {
               if (typeof error != 'undefined') {
-                app.info('error creating admin' + error);
+                app.err('error creating admin' + error);
                 task.abort();
               } else {
                 task.complete();
               }
             });
           } catch (e) {
-            app.info('error creating admin' + e);
+            app.err('error creating admin' + e);
           }
-        },
-        function () {
-          this.complete();
-        },
-        function () {
-          this.complete();
         }
       ]
     })
   });
   createDataSetCommand.onEvent('Completed', function (event) {
     if (this.status == 1)
-      app.info('Dataset created successfully.')
+      app.done('Dataset created successfully.')
     else
-      app.info('Dataset procedure failed.')
+      app.warn('Dataset procedure failed.')
   });
   site.toolsMenu.push(createDataSetCommand);
 }());

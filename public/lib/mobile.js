@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.4.11',
+      version: '0.4.14',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -497,13 +497,15 @@ Command.prototype._emitEvent = function (event, obj) {
   //  this._eventListeners = [];
 };
 Command.prototype.execute = function (context) {
-  if (!this.type) throw new Error('command not implemented');
-  if (!contains(['Function', 'Procedure', 'Menu', 'Presentation'], this.type)) throw new Error('command type ' + this.type + ' not implemented');
+  var command = this;
+  var args = arguments;
+  if (!command.type) throw new Error('command not implemented');
+  if (!contains(['Function', 'Procedure', 'Menu', 'Presentation'], command.type)) throw new Error('command type ' + command.type + ' not implemented');
   var errors;
-  switch (this.type) {
+  switch (command.type) {
     case 'Presentation':
-      if (!(this.contents instanceof Presentation)) throw new Error('contents must be a Presentation');
-      errors = this.contents.getObjectStateErrors();
+      if (!(command.contents instanceof Presentation)) throw new Error('contents must be a Presentation');
+      errors = command.contents.getObjectStateErrors();
       if (errors.length) {
         if (errors.length > 1)
           throw new Error('error executing Presentation: multiple errors');
@@ -513,11 +515,10 @@ Command.prototype.execute = function (context) {
       if (!(context instanceof Interface)) throw new Error('interface param required');
       break;
   }
-  var self = this;
-  var args = arguments;
-  this._emitEvent('BeforeExecute');
+
+  command._emitEvent('BeforeExecute');
   try {
-    switch (this.type) {
+    switch (command.type) {
       case 'Function':
         setTimeout(callFunc, 0);
         break;
@@ -525,34 +526,41 @@ Command.prototype.execute = function (context) {
         setTimeout(procedureExecuteInit, 0);
         break;
       case 'Menu':
-        context.render(this, 'View');
+        context.render(command, 'View');
         break;
       case 'Presentation':
-        context.render(this);
+        if (command.contents.preRenderCallback) {
+          command.contents.preRenderCallback(command, function () {
+            context.render(command);
+          });
+        } else {
+          context.render(command);  
+        }
         break;
     }
   } catch (e) {
-    this.error = e;
-    this._emitEvent('Error', e);
-    this._emitEvent('Completed');
-    this.status = -1;
+    command.error = e;
+    command._emitEvent('Error', e);
+    command._emitEvent('Completed');
+    command.status = -1;
   }
-  this._emitEvent('AfterExecute');
+  command._emitEvent('AfterExecute');
+  
   function callFunc() {
-    self.status = 0;
+    command.status = 0;
     try {
-      self.contents.apply(self, args); // give function this context to command object (self)
+      command.contents.apply(command, args); // give function this context to command object (command)
     } catch (e) {
-      self.error = e;
-      self._emitEvent('Error', e);
-      self._emitEvent('Completed');
-      self.status = -1;
+      command.error = e;
+      command._emitEvent('Error', e);
+      command._emitEvent('Completed');
+      command.status = -1;
     }
   }
 
   function procedureExecuteInit() {
-    self.status = 0;
-    var tasks = self.contents.tasks || [];
+    command.status = 0;
+    var tasks = command.contents.tasks || [];
     for (var t = 0; t < tasks.length; t++) {
       // shorthand for function command gets coerced into longhand
       if (typeof tasks[t] == 'function') {
@@ -562,7 +570,7 @@ Command.prototype.execute = function (context) {
       // Initialize if not done
       if (!tasks[t].command._parentProcedure) {
         tasks[t].command._taskIndex = t;
-        tasks[t].command._parentProcedure = self;
+        tasks[t].command._parentProcedure = command;
         tasks[t].command.onEvent('*', ProcedureEvents);
       }
       tasks[t].command.status = undefined;
@@ -571,7 +579,7 @@ Command.prototype.execute = function (context) {
   }
 
   function procedureExecute() {
-    var tasks = self.contents.tasks || [];
+    var tasks = command.contents.tasks || [];
     for (var t = 0; t < tasks.length; t++) {
       // Execute if it is time
       var canExecute = true;
@@ -608,14 +616,14 @@ Command.prototype.execute = function (context) {
   }
 
   function ProcedureEvents(event, obj) {
-    var tasks = self.contents.tasks;
+    var tasks = command.contents.tasks;
     var allTasksDone = true; // until proved wrong ...
     switch (event) {
       case 'Error':
-        self._emitEvent('Error', obj);
+        command._emitEvent('Error', obj);
         break;
       case 'Aborted':
-        self.abort();
+        command.abort();
         break;
       case 'Completed':
         for (var t in tasks) {
@@ -626,7 +634,7 @@ Command.prototype.execute = function (context) {
           }
         }
         if (allTasksDone)
-          self.complete(); // todo when all run
+          command.complete(); // todo when all run
         else
           procedureExecute();
         break;
@@ -824,6 +832,15 @@ Interface.prototype.render = function (command, callback) {
   //if (callback && typeof callback != 'function') throw new Error('optional second argument must a commandRequest callback function');
 };
 Interface.prototype.info = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+};
+Interface.prototype.done = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+};
+Interface.prototype.warn = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+};
+Interface.prototype.err = function (text) {
   if (!text || typeof text !== 'string') throw new Error('text required');
 };
 Interface.prototype.ok = function (prompt, callback) {
@@ -2073,6 +2090,21 @@ Application.prototype.info = function (text) {
   if (!text || typeof text !== 'string') throw new Error('text parameter required');
   this.primaryInterface.info(text);
 };
+Application.prototype.done = function (text) {
+  if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
+  if (!text || typeof text !== 'string') throw new Error('text parameter required');
+  this.primaryInterface.done(text);
+};
+Application.prototype.warn = function (text) {
+  if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
+  if (!text || typeof text !== 'string') throw new Error('text parameter required');
+  this.primaryInterface.warn(text);
+};
+Application.prototype.err = function (text) {
+  if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
+  if (!text || typeof text !== 'string') throw new Error('text parameter required');
+  this.primaryInterface.err(text);
+};
 Application.prototype.ok = function (prompt, callback) {
   if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
@@ -2756,7 +2788,7 @@ var cpad = function (expr, length, fillChar) {
 TGI.INTERFACE = TGI.INTERFACE || {};
 TGI.INTERFACE.FRAMEWORK7 = function () {
   return {
-    version: '0.0.3',
+    version: '0.0.4',
     Framework7Interface: Framework7Interface
   };
 };
@@ -2795,13 +2827,13 @@ Framework7Interface.prototype = Object.create(Interface.prototype);
 Framework7Interface.prototype.canMock = function () {
   return this.vendor ? true : false;
 };
-Framework7Interface.prototype.start = function (application, presentation, callBack) {
+Framework7Interface.prototype.start = function (application, presentation, callback) {
   if (!(application instanceof Application)) throw new Error('Application required');
   if (!(presentation instanceof Presentation)) throw new Error('presentation required');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (typeof callback != 'function') throw new Error('callback required');
   this.application = application;
   this.presentation = presentation;
-  this.startCallback = callBack;
+  this.startCallback = callback;
   if (!this.vendor) throw new Error('Error initializing Framework7');
   try {
     if (!Framework7Interface._f7) {
@@ -2829,7 +2861,7 @@ Framework7Interface.prototype.dispatch = function (request, response) {
         // this.activatePanel(request.command);
         requestHandled = true;
       } else {
-        requestHandled = !this.application.dispatch(request);
+        requestHandled = this.application.dispatch(request);
       }
     }
     if (!requestHandled && this.startcallback) {
@@ -2841,18 +2873,13 @@ Framework7Interface.prototype.dispatch = function (request, response) {
     }
   }
 };
-Framework7Interface.prototype.render = function (item, presentationMode, callback) {
+Framework7Interface.prototype.render = function (command, callback) {
+
   var framework7Interface = this;
-  var presentation = item;
-  /* todo broke tests :(
-  if (false === (presentation instanceof Presentation)) throw new Error('Presentation object required');
-  if (typeof presentationMode !== 'string') throw new Error('presentationMode required');
-  if (!contains(Command.getPresentationModes(), presentationMode)) throw new Error('Invalid presentationMode: ' + presentationMode);
-  if (callback && typeof callback != 'function') throw new Error('optional second argument must a commandRequest callback function');
-*/
-  if (item instanceof Command) {
-    presentation = item.contents;
-  }
+  if (false === (command instanceof Command)) throw new Error('Command object required');
+
+  var presentation = command.contents;
+
   /**
    * find the presentation on the toolbar first
    */
@@ -2873,8 +2900,6 @@ Framework7Interface.prototype.render = function (item, presentationMode, callbac
       return;
     }
   }
-//framework7Interface.toolBarMoreCommands = [];
-
 };
 
 /**
@@ -3011,26 +3036,38 @@ Framework7Interface.prototype.updateBrand = function (text) {
  */
 Framework7Interface.prototype.info = function (text) {
   if (!text || typeof text !== 'string') throw new Error('text required');
-  Framework7Interface._f7.addNotification({title: this.application.get('brand'), message: text, hold:3000});
+  Framework7Interface._f7.addNotification({title: 'Information', message: text, hold:3000});
 };
-Framework7Interface.prototype.ok = function (prompt, callBack) {
+Framework7Interface.prototype.done = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+  Framework7Interface._f7.addNotification({title: 'Success', message: text, hold:3000});
+};
+Framework7Interface.prototype.warn = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+  Framework7Interface._f7.addNotification({title: 'Warning', message: text, hold:3000});
+};
+Framework7Interface.prototype.err = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+  Framework7Interface._f7.addNotification({title: 'ERROR', message: text, hold:3000});
+};
+Framework7Interface.prototype.ok = function (prompt, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (typeof callback != 'function') throw new Error('callback required');
   if (this.okPending) {
     delete this.okPending;
-    callBack();
+    callback();
   } else {
     Framework7Interface._f7.alert(prompt.replace(/\n/g,'<br>'), this.application.get('brand'), function () {
-      callBack();
+      callback();
     });
   }
 };
-Framework7Interface.prototype.yesno = function (prompt, callBack) {
+Framework7Interface.prototype.yesno = function (prompt, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (typeof callback != 'function') throw new Error('callback required');
   if (this.yesnoPending) {
     delete this.yesnoPending;
-    callBack(this.yesnoResponse);
+    callback(this.yesnoResponse);
   } else {
     Framework7Interface._f7.modal({
       text:prompt.replace(/\n/g,'<br>'),
@@ -3039,43 +3076,43 @@ Framework7Interface.prototype.yesno = function (prompt, callBack) {
       buttons: [{
         text: 'Yes',
         onClick: function () {
-          callBack(true);
+          callback(true);
         }
       },{
         text: 'No',
         onClick: function () {
-          callBack(false);
+          callback(false);
         }
       }]
     });
   }
 };
-Framework7Interface.prototype.ask = function (prompt, attribute, callBack) {
+Framework7Interface.prototype.ask = function (prompt, attribute, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
-  if (false === (attribute instanceof Attribute)) throw new Error('instance of Attribute a required parameter');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (false === (attribute instanceof Attribute)) throw new Error('attribute or callback expected');
+  if (typeof callback != 'function') throw new Error('callback required');
   if (this.askPending) {
     delete this.askPending;
-    callBack(this.askResponse);
+    callback(this.askResponse);
   } else {
     Framework7Interface._f7.prompt(prompt.replace(/\n/g,'<br>'), this.application.get('brand'),
       function (answer) {
-        callBack(answer);
+        callback(answer);
       },
       function () {
-        callBack();
+        callback();
       }
     );
   }
 };
-Framework7Interface.prototype.choose = function (prompt, choices, callBack) {
+Framework7Interface.prototype.choose = function (prompt, choices, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
   if (false === (choices instanceof Array)) throw new Error('choices array required');
   if (!choices.length) throw new Error('choices array empty');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (typeof callback != 'function') throw new Error('callback required');
   if (this.choosePending) {
     delete this.choosePending;
-    callBack(Interface.firstMatch(this.chooseResponse, choices));
+    callback(Interface.firstMatch(this.chooseResponse, choices));
   } else {
     var groups = [];
     groups.push([{text: prompt.replace(/\n/g,'<br>'), label: true}]);
@@ -3097,47 +3134,47 @@ Framework7Interface.prototype.choose = function (prompt, choices, callBack) {
    * Since framework does not return any info in callback
    */
   function cbCancel() {
-    callBack();
+    callback();
   }
 
   function cb0() {
-    callBack(choices[0]);
+    callback(choices[0]);
   }
 
   function cb1() {
-    callBack(choices[1]);
+    callback(choices[1]);
   }
 
   function cb2() {
-    callBack(choices[2]);
+    callback(choices[2]);
   }
 
   function cb3() {
-    callBack(choices[3]);
+    callback(choices[3]);
   }
 
   function cb4() {
-    callBack(choices[4]);
+    callback(choices[4]);
   }
 
   function cb5() {
-    callBack(choices[5]);
+    callback(choices[5]);
   }
 
   function cb6() {
-    callBack(choices[6]);
+    callback(choices[6]);
   }
 
   function cb7() {
-    callBack(choices[7]);
+    callback(choices[7]);
   }
 
   function cb8() {
-    callBack(choices[8]);
+    callback(choices[8]);
   }
 
   function cb9() {
-    callBack(choices[9]);
+    callback(choices[9]);
   }
 };
 /**---------------------------------------------------------------------------------------------------------------------
@@ -3397,7 +3434,10 @@ Framework7Interface.prototype.showView = function (toolBarCommand) {
           var toolBarCommandNo = parseInt(right(rootID, rootID.length - 6)) - 1;
           var subMenuNo = parseInt(right(htmlID, htmlID.length - dash)) - 1;
           var dashizzle = framework7Interface.toolBarCommands[toolBarCommandNo].subMenu[subMenuNo];
-          dashizzle.command.execute(framework7Interface);
+          if (dashizzle.command.type == 'Stub')
+            framework7Interface.info('The ' + dashizzle.command.name + ' feature is not available at this time.');
+          else
+            dashizzle.command.execute(framework7Interface);
         });
       }
     }

@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.4.11',
+      version: '0.4.14',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -497,13 +497,15 @@ Command.prototype._emitEvent = function (event, obj) {
   //  this._eventListeners = [];
 };
 Command.prototype.execute = function (context) {
-  if (!this.type) throw new Error('command not implemented');
-  if (!contains(['Function', 'Procedure', 'Menu', 'Presentation'], this.type)) throw new Error('command type ' + this.type + ' not implemented');
+  var command = this;
+  var args = arguments;
+  if (!command.type) throw new Error('command not implemented');
+  if (!contains(['Function', 'Procedure', 'Menu', 'Presentation'], command.type)) throw new Error('command type ' + command.type + ' not implemented');
   var errors;
-  switch (this.type) {
+  switch (command.type) {
     case 'Presentation':
-      if (!(this.contents instanceof Presentation)) throw new Error('contents must be a Presentation');
-      errors = this.contents.getObjectStateErrors();
+      if (!(command.contents instanceof Presentation)) throw new Error('contents must be a Presentation');
+      errors = command.contents.getObjectStateErrors();
       if (errors.length) {
         if (errors.length > 1)
           throw new Error('error executing Presentation: multiple errors');
@@ -513,11 +515,10 @@ Command.prototype.execute = function (context) {
       if (!(context instanceof Interface)) throw new Error('interface param required');
       break;
   }
-  var self = this;
-  var args = arguments;
-  this._emitEvent('BeforeExecute');
+
+  command._emitEvent('BeforeExecute');
   try {
-    switch (this.type) {
+    switch (command.type) {
       case 'Function':
         setTimeout(callFunc, 0);
         break;
@@ -525,34 +526,41 @@ Command.prototype.execute = function (context) {
         setTimeout(procedureExecuteInit, 0);
         break;
       case 'Menu':
-        context.render(this, 'View');
+        context.render(command, 'View');
         break;
       case 'Presentation':
-        context.render(this);
+        if (command.contents.preRenderCallback) {
+          command.contents.preRenderCallback(command, function () {
+            context.render(command);
+          });
+        } else {
+          context.render(command);  
+        }
         break;
     }
   } catch (e) {
-    this.error = e;
-    this._emitEvent('Error', e);
-    this._emitEvent('Completed');
-    this.status = -1;
+    command.error = e;
+    command._emitEvent('Error', e);
+    command._emitEvent('Completed');
+    command.status = -1;
   }
-  this._emitEvent('AfterExecute');
+  command._emitEvent('AfterExecute');
+  
   function callFunc() {
-    self.status = 0;
+    command.status = 0;
     try {
-      self.contents.apply(self, args); // give function this context to command object (self)
+      command.contents.apply(command, args); // give function this context to command object (command)
     } catch (e) {
-      self.error = e;
-      self._emitEvent('Error', e);
-      self._emitEvent('Completed');
-      self.status = -1;
+      command.error = e;
+      command._emitEvent('Error', e);
+      command._emitEvent('Completed');
+      command.status = -1;
     }
   }
 
   function procedureExecuteInit() {
-    self.status = 0;
-    var tasks = self.contents.tasks || [];
+    command.status = 0;
+    var tasks = command.contents.tasks || [];
     for (var t = 0; t < tasks.length; t++) {
       // shorthand for function command gets coerced into longhand
       if (typeof tasks[t] == 'function') {
@@ -562,7 +570,7 @@ Command.prototype.execute = function (context) {
       // Initialize if not done
       if (!tasks[t].command._parentProcedure) {
         tasks[t].command._taskIndex = t;
-        tasks[t].command._parentProcedure = self;
+        tasks[t].command._parentProcedure = command;
         tasks[t].command.onEvent('*', ProcedureEvents);
       }
       tasks[t].command.status = undefined;
@@ -571,7 +579,7 @@ Command.prototype.execute = function (context) {
   }
 
   function procedureExecute() {
-    var tasks = self.contents.tasks || [];
+    var tasks = command.contents.tasks || [];
     for (var t = 0; t < tasks.length; t++) {
       // Execute if it is time
       var canExecute = true;
@@ -608,14 +616,14 @@ Command.prototype.execute = function (context) {
   }
 
   function ProcedureEvents(event, obj) {
-    var tasks = self.contents.tasks;
+    var tasks = command.contents.tasks;
     var allTasksDone = true; // until proved wrong ...
     switch (event) {
       case 'Error':
-        self._emitEvent('Error', obj);
+        command._emitEvent('Error', obj);
         break;
       case 'Aborted':
-        self.abort();
+        command.abort();
         break;
       case 'Completed':
         for (var t in tasks) {
@@ -626,7 +634,7 @@ Command.prototype.execute = function (context) {
           }
         }
         if (allTasksDone)
-          self.complete(); // todo when all run
+          command.complete(); // todo when all run
         else
           procedureExecute();
         break;
@@ -824,6 +832,15 @@ Interface.prototype.render = function (command, callback) {
   //if (callback && typeof callback != 'function') throw new Error('optional second argument must a commandRequest callback function');
 };
 Interface.prototype.info = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+};
+Interface.prototype.done = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+};
+Interface.prototype.warn = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+};
+Interface.prototype.err = function (text) {
   if (!text || typeof text !== 'string') throw new Error('text required');
 };
 Interface.prototype.ok = function (prompt, callback) {
@@ -2073,6 +2090,21 @@ Application.prototype.info = function (text) {
   if (!text || typeof text !== 'string') throw new Error('text parameter required');
   this.primaryInterface.info(text);
 };
+Application.prototype.done = function (text) {
+  if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
+  if (!text || typeof text !== 'string') throw new Error('text parameter required');
+  this.primaryInterface.done(text);
+};
+Application.prototype.warn = function (text) {
+  if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
+  if (!text || typeof text !== 'string') throw new Error('text parameter required');
+  this.primaryInterface.warn(text);
+};
+Application.prototype.err = function (text) {
+  if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
+  if (!text || typeof text !== 'string') throw new Error('text parameter required');
+  this.primaryInterface.err(text);
+};
 Application.prototype.ok = function (prompt, callback) {
   if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
@@ -2756,7 +2788,7 @@ var cpad = function (expr, length, fillChar) {
 TGI.INTERFACE = TGI.INTERFACE || {};
 TGI.INTERFACE.BOOTSTRAP = function () {
   return {
-    version: '0.1.0',
+    version: '0.1.1',
     BootstrapInterface: BootstrapInterface
   };
 };
@@ -3741,78 +3773,265 @@ BootstrapInterface.prototype.htmlDialog = function () {
 };
 
 BootstrapInterface.prototype.info = function (text) {
-  /*
-   var bootstrapInterface = this;
-   if (!text || typeof text !== 'string') throw new Error('text required');
-   var infoClass = ' class="text-center text-info" ';
-   var infoStyle = ' style="margin-top: 0; margin-bottom: 4px;" ';
-   this.doc.navBarAlert.innerHTML = '<h5 ' + infoClass + infoStyle + '>' + text + '</h5>';
-   $(this.doc.navBarAlert).click(function (e) {
-   bootstrapInterface.doc.navBarAlert.innerHTML = '';
-   e.preventDefault();
-   });
-   setTimeout(function () {
-   bootstrapInterface.doc.navBarAlert.innerHTML = '';
-   },3000);
-   */
   var self = this;
-  var notify = $.notify({
-    // options
-    icon: 'glyphicon glyphicon-info-sign',
-    title: 'Information',
-    message: text,
-    url: 'https://github.com/mouse0270/bootstrap-notify',
-    target: '_blank'
-  }, {
-    // settings
-    element: 'body',
-    position: null,
-    type: "info",
-    allow_dismiss: true,
-    newest_on_top: true,
-    placement: {
-      from: "top",
-      align: "right"
+  var notify = $.notify(
+    {
+      /**
+       * options
+       */
+      icon: 'glyphicon glyphicon-info-sign',
+      title: 'Information',
+      message: text,
+      //url: 'https://github.com/mouse0270/bootstrap-notify',
+      //target: '_blank'
     },
-    offset: {
-      x: 20,
-      y: self.doc.navBarHeader.offsetHeight+20
-    },
-    spacing: 10,
-    z_index: 1031,
-    delay: 0,
-    timer: 1000,
-    //url_target: '_blank',
-    mouse_over: null,
-    animate: {
-      enter: 'animated fadeInDown',
-      exit: 'animated fadeOutUp'
-    },
-    onShow: null,
-    onShown: null,
-    onClose: null,
-    onClosed: null,
-    icon_type: 'class',
-    template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
-    '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
-    '<h4>' +
-    '<span data-notify="icon"></span> ' +
-    '<span data-notify="title">{1}</span>' +
-    '</h4>' +
-    '<span data-notify="message">{2}</span>' +
-    '<div class="progress" data-notify="progressbar">' +
-    '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
-    '</div>' +
-      //'<a href="{3}" target="{4}" data-notify="url"></a>' +
-    '</div>'
-  });
-
+    {
+      /**
+       * settings
+       */
+      element: 'body',
+      position: null,
+      type: "info",
+      allow_dismiss: true,
+      newest_on_top: true,
+      placement: {
+        from: "top",
+        align: "right"
+      },
+      offset: {
+        x: 20,
+        y: self.doc.navBarHeader.offsetHeight + 20
+      },
+      spacing: 10,
+      z_index: 1031,
+      delay: 0,
+      timer: 1000,
+      //url_target: '_blank',
+      mouse_over: null,
+      animate: {
+        enter: 'animated fadeInDown',
+        exit: 'animated fadeOutUp'
+      },
+      onShow: null,
+      onShown: null,
+      onClose: null,
+      onClosed: null,
+      icon_type: 'class',
+      template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
+      '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
+      '<h4>' +
+      '<span data-notify="icon"></span> ' +
+      '<span data-notify="title">{1}</span>' +
+      '</h4>' +
+      '<span data-notify="message">{2}</span>' +
+      '<div class="progress" data-notify="progressbar">' +
+      '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
+      '</div>' +
+        //'<a href="{3}" target="{4}" data-notify="url"></a>' +
+      '</div>'
+    }
+  );
   setTimeout(function () {
     notify.close();
   }, 3000);
-
-
 };
+
+
+BootstrapInterface.prototype.done = function (text) {
+  var self = this;
+  var notify = $.notify(
+    {
+      /**
+       * options
+       */
+      icon: 'glyphicon glyphicon-saved',
+      title: 'Done',
+      message: text
+      //url: 'https://github.com/mouse0270/bootstrap-notify',
+      //target: '_blank'
+    },
+    {
+      /**
+       * settings
+       */
+      element: 'body',
+      position: null,
+      type: "success",
+      allow_dismiss: true,
+      newest_on_top: true,
+      placement: {
+        from: "top",
+        align: "right"
+      },
+      offset: {
+        x: 20,
+        y: self.doc.navBarHeader.offsetHeight + 20
+      },
+      spacing: 10,
+      z_index: 1031,
+      delay: 0,
+      timer: 1000,
+      //url_target: '_blank',
+      mouse_over: null,
+      animate: {
+        enter: 'animated fadeInDown',
+        exit: 'animated fadeOutUp'
+      },
+      onShow: null,
+      onShown: null,
+      onClose: null,
+      onClosed: null,
+      icon_type: 'class',
+      template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
+      '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
+      '<h4>' +
+      '<span data-notify="icon"></span> ' +
+      '<span data-notify="title">{1}</span>' +
+      '</h4>' +
+      '<span data-notify="message">{2}</span>' +
+      '<div class="progress" data-notify="progressbar">' +
+      '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
+      '</div>' +
+        //'<a href="{3}" target="{4}" data-notify="url"></a>' +
+      '</div>'
+    }
+  );
+  setTimeout(function () {
+    notify.close();
+  }, 3000);
+};
+
+BootstrapInterface.prototype.warn = function (text) {
+  var self = this;
+  var notify = $.notify(
+    {
+      /**
+       * options
+       */
+      icon: 'glyphicon glyphicon-exclamation-sign',
+      title: 'Warning',
+      message: text,
+      //url: 'https://github.com/mouse0270/bootstrap-notify',
+      //target: '_blank'
+    },
+    {
+      /**
+       * settings
+       */
+      element: 'body',
+      position: null,
+      type: "warning",
+      allow_dismiss: true,
+      newest_on_top: true,
+      placement: {
+        from: "top",
+        align: "right"
+      },
+      offset: {
+        x: 20,
+        y: self.doc.navBarHeader.offsetHeight + 20
+      },
+      spacing: 10,
+      z_index: 1031,
+      delay: 0,
+      timer: 1000,
+      //url_target: '_blank',
+      mouse_over: null,
+      animate: {
+        enter: 'animated fadeInDown',
+        exit: 'animated fadeOutUp'
+      },
+      onShow: null,
+      onShown: null,
+      onClose: null,
+      onClosed: null,
+      icon_type: 'class',
+      template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
+      '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
+      '<h4>' +
+      '<span data-notify="icon"></span> ' +
+      '<span data-notify="title">{1}</span>' +
+      '</h4>' +
+      '<span data-notify="message">{2}</span>' +
+      '<div class="progress" data-notify="progressbar">' +
+      '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
+      '</div>' +
+        //'<a href="{3}" target="{4}" data-notify="url"></a>' +
+      '</div>'
+    }
+  );
+  setTimeout(function () {
+    notify.close();
+  }, 3000);
+};
+
+
+BootstrapInterface.prototype.err = function (text) {
+  var self = this;
+  var notify = $.notify(
+    {
+      /**
+       * options
+       */
+      icon: 'glyphicon glyphicon-warning-sign',
+      title: 'Error',
+      message: text,
+      //url: 'https://github.com/mouse0270/bootstrap-notify',
+      //target: '_blank'
+    },
+    {
+      /**
+       * settings
+       */
+      element: 'body',
+      position: null,
+      type: "danger",
+      allow_dismiss: true,
+      newest_on_top: true,
+      placement: {
+        from: "top",
+        align: "right"
+      },
+      offset: {
+        x: 20,
+        y: self.doc.navBarHeader.offsetHeight + 20
+      },
+      spacing: 10,
+      z_index: 1031,
+      delay: 0,
+      timer: 1000,
+      //url_target: '_blank',
+      mouse_over: null,
+      animate: {
+        enter: 'animated fadeInDown',
+        exit: 'animated fadeOutUp'
+      },
+      onShow: null,
+      onShown: null,
+      onClose: null,
+      onClosed: null,
+      icon_type: 'class',
+      template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
+      '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
+      '<h4>' +
+      '<span data-notify="icon"></span> ' +
+      '<span data-notify="title">{1}</span>' +
+      '</h4>' +
+      '<span data-notify="message">{2}</span>' +
+      '<div class="progress" data-notify="progressbar">' +
+      '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
+      '</div>' +
+        //'<a href="{3}" target="{4}" data-notify="url"></a>' +
+      '</div>'
+    }
+  );
+  setTimeout(function () {
+    notify.close();
+  }, 3000);
+};
+
+
+
 BootstrapInterface.prototype.ok = function (prompt, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
   if (typeof callback != 'function') throw new Error('callback required');

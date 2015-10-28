@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.4.7',
+      version: '0.4.13',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -33,6 +33,8 @@ var TGI = {
       Workspace: Workspace,
       inheritPrototype: inheritPrototype,
       getInvalidProperties: getInvalidProperties,
+      getConstructorFromModelType: getConstructorFromModelType,
+      createModelFromModelType: createModelFromModelType,
       trim: trim,
       ltrim: ltrim,
       rtrim: rtrim,
@@ -612,6 +614,9 @@ Command.prototype.execute = function (context) {
       case 'Error':
         self._emitEvent('Error', obj);
         break;
+      case 'Aborted':
+        self.abort();
+        break;
       case 'Completed':
         for (var t in tasks) {
           if (tasks.hasOwnProperty(t)) {
@@ -821,6 +826,15 @@ Interface.prototype.render = function (command, callback) {
 Interface.prototype.info = function (text) {
   if (!text || typeof text !== 'string') throw new Error('text required');
 };
+Interface.prototype.done = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+};
+Interface.prototype.warn = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+};
+Interface.prototype.err = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+};
 Interface.prototype.ok = function (prompt, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
   if (typeof callback != 'function') throw new Error('callback required');
@@ -1019,7 +1033,10 @@ var Model = function (args) {
   this._eventListeners = [];
   this._errorConditions = {};
 };
-// Methods
+Model._ModelConstructor = {};
+/**
+ * Methods
+ */
 Model.prototype.toString = function () {
   return "a " + this.modelType;
 };
@@ -1487,6 +1504,7 @@ function Transport(location, callback) {
     console.log('socket.io (' + self.location + ') disconnect: ' + reason);
   });
 }
+Transport.showLog=false; // set to true to show message
 /**
  * pub/sub thingies
  */
@@ -1495,6 +1513,8 @@ Transport.setMessageHandler = function (message, handler) {
   Transport.messageHandlers[message] = handler;
 };
 Transport.hostMessageProcess = function (obj, fn) {
+  if (Transport.showLog)
+    console.log('Transport.hostMessageProcess ' + JSON.stringify(obj));
   if (Transport.messageHandlers[obj.type]) {
     Transport.messageHandlers[obj.type](obj.contents, fn);
   } else {
@@ -1523,10 +1543,14 @@ Transport.prototype.send = function (message, callback) {
     return;
   }
   if (typeof callback != 'undefined') {
+    if (Transport.showLog)
+      console.log('Transport emit ' + JSON.stringify(message));
     self.socket.emit('ackmessage', message, function (msg) {
       callback.call(self, msg);
     });
   } else {
+    if (Transport.showLog)
+      console.log('Transport send ' + JSON.stringify(message));
     self.socket.send(message);
   }
 };
@@ -1998,6 +2022,8 @@ var Application = function (args) {
   this.set('brand', 'NEW APP');
 };
 Application.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Application = Application;
+
 
 /**
  * Methods
@@ -2055,6 +2081,21 @@ Application.prototype.info = function (text) {
   if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
   if (!text || typeof text !== 'string') throw new Error('text parameter required');
   this.primaryInterface.info(text);
+};
+Application.prototype.done = function (text) {
+  if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
+  if (!text || typeof text !== 'string') throw new Error('text parameter required');
+  this.primaryInterface.done(text);
+};
+Application.prototype.warn = function (text) {
+  if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
+  if (!text || typeof text !== 'string') throw new Error('text parameter required');
+  this.primaryInterface.warn(text);
+};
+Application.prototype.err = function (text) {
+  if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
+  if (!text || typeof text !== 'string') throw new Error('text parameter required');
+  this.primaryInterface.err(text);
 };
 Application.prototype.ok = function (prompt, callback) {
   if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
@@ -2124,6 +2165,7 @@ var Log = function (args) {
   this.modelType = "Log";
 };
 Log.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Log = Log;
 /**
  * Methods
  */
@@ -2151,6 +2193,7 @@ var Presentation = function (args) {
   this.modelType = "Presentation";
 };
 Presentation.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Presentation = Presentation;
 /*
  * Methods
  */
@@ -2253,6 +2296,7 @@ var Session = function (args) {
   this.set('active', false);
 };
 Session.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Session = Session;
 /*
  * Methods
  */
@@ -2357,9 +2401,10 @@ var User = function (args) {
   args.attributes.push(new Attribute({name: 'email', type: 'String(20)'}));
   Model.call(this, args);
   this.modelType = "User";
-  this.set('active',false);
+  this.set('active', false);
 };
 User.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.User = User;
 /**
  * tequila
  * workspace-class
@@ -2381,6 +2426,7 @@ function Workspace(args) {
   this.modelType = "Workspace";
 }
 Workspace.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Workspace = Workspace;
 /*
  * Methods
  */
@@ -2622,6 +2668,23 @@ var getInvalidProperties = function (args, allowedProperties) {
   return props;
 };
 
+/**
+ * getConstructorFromModelType(modelType)
+ */
+var getConstructorFromModelType = function (modelType) {
+  return Model._ModelConstructor[modelType] || Model;
+};
+
+/**
+ * createModelFromModelType(modelType)
+ */
+var createModelFromModelType = function (modelType) {
+  var ProxyModel = getConstructorFromModelType(modelType);
+  return new ProxyModel();
+};
+
+
+
 /**---------------------------------------------------------------------------------------------------------------------
  * tgi-core/lib/utility/tgi-core-strings.source.js
  */
@@ -2717,7 +2780,7 @@ var cpad = function (expr, length, fillChar) {
 TGI.INTERFACE = TGI.INTERFACE || {};
 TGI.INTERFACE.BOOTSTRAP = function () {
   return {
-    version: '0.1.0',
+    version: '0.1.1',
     BootstrapInterface: BootstrapInterface
   };
 };
@@ -3702,78 +3765,265 @@ BootstrapInterface.prototype.htmlDialog = function () {
 };
 
 BootstrapInterface.prototype.info = function (text) {
-  /*
-   var bootstrapInterface = this;
-   if (!text || typeof text !== 'string') throw new Error('text required');
-   var infoClass = ' class="text-center text-info" ';
-   var infoStyle = ' style="margin-top: 0; margin-bottom: 4px;" ';
-   this.doc.navBarAlert.innerHTML = '<h5 ' + infoClass + infoStyle + '>' + text + '</h5>';
-   $(this.doc.navBarAlert).click(function (e) {
-   bootstrapInterface.doc.navBarAlert.innerHTML = '';
-   e.preventDefault();
-   });
-   setTimeout(function () {
-   bootstrapInterface.doc.navBarAlert.innerHTML = '';
-   },3000);
-   */
   var self = this;
-  var notify = $.notify({
-    // options
-    icon: 'glyphicon glyphicon-info-sign',
-    title: 'Information',
-    message: text,
-    url: 'https://github.com/mouse0270/bootstrap-notify',
-    target: '_blank'
-  }, {
-    // settings
-    element: 'body',
-    position: null,
-    type: "info",
-    allow_dismiss: true,
-    newest_on_top: true,
-    placement: {
-      from: "top",
-      align: "right"
+  var notify = $.notify(
+    {
+      /**
+       * options
+       */
+      icon: 'glyphicon glyphicon-info-sign',
+      title: 'Information',
+      message: text,
+      //url: 'https://github.com/mouse0270/bootstrap-notify',
+      //target: '_blank'
     },
-    offset: {
-      x: 20,
-      y: self.doc.navBarHeader.offsetHeight+20
-    },
-    spacing: 10,
-    z_index: 1031,
-    delay: 0,
-    timer: 1000,
-    //url_target: '_blank',
-    mouse_over: null,
-    animate: {
-      enter: 'animated fadeInDown',
-      exit: 'animated fadeOutUp'
-    },
-    onShow: null,
-    onShown: null,
-    onClose: null,
-    onClosed: null,
-    icon_type: 'class',
-    template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
-    '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
-    '<h4>' +
-    '<span data-notify="icon"></span> ' +
-    '<span data-notify="title">{1}</span>' +
-    '</h4>' +
-    '<span data-notify="message">{2}</span>' +
-    '<div class="progress" data-notify="progressbar">' +
-    '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
-    '</div>' +
-      //'<a href="{3}" target="{4}" data-notify="url"></a>' +
-    '</div>'
-  });
-
+    {
+      /**
+       * settings
+       */
+      element: 'body',
+      position: null,
+      type: "info",
+      allow_dismiss: true,
+      newest_on_top: true,
+      placement: {
+        from: "top",
+        align: "right"
+      },
+      offset: {
+        x: 20,
+        y: self.doc.navBarHeader.offsetHeight + 20
+      },
+      spacing: 10,
+      z_index: 1031,
+      delay: 0,
+      timer: 1000,
+      //url_target: '_blank',
+      mouse_over: null,
+      animate: {
+        enter: 'animated fadeInDown',
+        exit: 'animated fadeOutUp'
+      },
+      onShow: null,
+      onShown: null,
+      onClose: null,
+      onClosed: null,
+      icon_type: 'class',
+      template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
+      '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
+      '<h4>' +
+      '<span data-notify="icon"></span> ' +
+      '<span data-notify="title">{1}</span>' +
+      '</h4>' +
+      '<span data-notify="message">{2}</span>' +
+      '<div class="progress" data-notify="progressbar">' +
+      '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
+      '</div>' +
+        //'<a href="{3}" target="{4}" data-notify="url"></a>' +
+      '</div>'
+    }
+  );
   setTimeout(function () {
     notify.close();
   }, 3000);
-
-
 };
+
+
+BootstrapInterface.prototype.done = function (text) {
+  var self = this;
+  var notify = $.notify(
+    {
+      /**
+       * options
+       */
+      icon: 'glyphicon glyphicon-saved',
+      title: 'Done',
+      message: text
+      //url: 'https://github.com/mouse0270/bootstrap-notify',
+      //target: '_blank'
+    },
+    {
+      /**
+       * settings
+       */
+      element: 'body',
+      position: null,
+      type: "success",
+      allow_dismiss: true,
+      newest_on_top: true,
+      placement: {
+        from: "top",
+        align: "right"
+      },
+      offset: {
+        x: 20,
+        y: self.doc.navBarHeader.offsetHeight + 20
+      },
+      spacing: 10,
+      z_index: 1031,
+      delay: 0,
+      timer: 1000,
+      //url_target: '_blank',
+      mouse_over: null,
+      animate: {
+        enter: 'animated fadeInDown',
+        exit: 'animated fadeOutUp'
+      },
+      onShow: null,
+      onShown: null,
+      onClose: null,
+      onClosed: null,
+      icon_type: 'class',
+      template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
+      '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
+      '<h4>' +
+      '<span data-notify="icon"></span> ' +
+      '<span data-notify="title">{1}</span>' +
+      '</h4>' +
+      '<span data-notify="message">{2}</span>' +
+      '<div class="progress" data-notify="progressbar">' +
+      '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
+      '</div>' +
+        //'<a href="{3}" target="{4}" data-notify="url"></a>' +
+      '</div>'
+    }
+  );
+  setTimeout(function () {
+    notify.close();
+  }, 3000);
+};
+
+BootstrapInterface.prototype.warn = function (text) {
+  var self = this;
+  var notify = $.notify(
+    {
+      /**
+       * options
+       */
+      icon: 'glyphicon glyphicon-exclamation-sign',
+      title: 'Warning',
+      message: text,
+      //url: 'https://github.com/mouse0270/bootstrap-notify',
+      //target: '_blank'
+    },
+    {
+      /**
+       * settings
+       */
+      element: 'body',
+      position: null,
+      type: "warning",
+      allow_dismiss: true,
+      newest_on_top: true,
+      placement: {
+        from: "top",
+        align: "right"
+      },
+      offset: {
+        x: 20,
+        y: self.doc.navBarHeader.offsetHeight + 20
+      },
+      spacing: 10,
+      z_index: 1031,
+      delay: 0,
+      timer: 1000,
+      //url_target: '_blank',
+      mouse_over: null,
+      animate: {
+        enter: 'animated fadeInDown',
+        exit: 'animated fadeOutUp'
+      },
+      onShow: null,
+      onShown: null,
+      onClose: null,
+      onClosed: null,
+      icon_type: 'class',
+      template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
+      '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
+      '<h4>' +
+      '<span data-notify="icon"></span> ' +
+      '<span data-notify="title">{1}</span>' +
+      '</h4>' +
+      '<span data-notify="message">{2}</span>' +
+      '<div class="progress" data-notify="progressbar">' +
+      '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
+      '</div>' +
+        //'<a href="{3}" target="{4}" data-notify="url"></a>' +
+      '</div>'
+    }
+  );
+  setTimeout(function () {
+    notify.close();
+  }, 3000);
+};
+
+
+BootstrapInterface.prototype.err = function (text) {
+  var self = this;
+  var notify = $.notify(
+    {
+      /**
+       * options
+       */
+      icon: 'glyphicon glyphicon-warning-sign',
+      title: 'Error',
+      message: text,
+      //url: 'https://github.com/mouse0270/bootstrap-notify',
+      //target: '_blank'
+    },
+    {
+      /**
+       * settings
+       */
+      element: 'body',
+      position: null,
+      type: "danger",
+      allow_dismiss: true,
+      newest_on_top: true,
+      placement: {
+        from: "top",
+        align: "right"
+      },
+      offset: {
+        x: 20,
+        y: self.doc.navBarHeader.offsetHeight + 20
+      },
+      spacing: 10,
+      z_index: 1031,
+      delay: 0,
+      timer: 1000,
+      //url_target: '_blank',
+      mouse_over: null,
+      animate: {
+        enter: 'animated fadeInDown',
+        exit: 'animated fadeOutUp'
+      },
+      onShow: null,
+      onShown: null,
+      onClose: null,
+      onClosed: null,
+      icon_type: 'class',
+      template: '<div data-notify="container" class="col-xs-11 col-sm-6 alert alert-notify alert-{0}" role="alert">' +
+      '<button type="button" aria-hidden="true" class="close" data-notify="dismiss">×</button>' +
+      '<h4>' +
+      '<span data-notify="icon"></span> ' +
+      '<span data-notify="title">{1}</span>' +
+      '</h4>' +
+      '<span data-notify="message">{2}</span>' +
+      '<div class="progress" data-notify="progressbar">' +
+      '<div class="progress-bar progress-bar-{0}" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;"></div>' +
+      '</div>' +
+        //'<a href="{3}" target="{4}" data-notify="url"></a>' +
+      '</div>'
+    }
+  );
+  setTimeout(function () {
+    notify.close();
+  }, 3000);
+};
+
+
+
 BootstrapInterface.prototype.ok = function (prompt, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
   if (typeof callback != 'function') throw new Error('callback required');

@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.3.10',
+      version: '0.4.13',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -27,11 +27,14 @@ var TGI = {
       Request: Request,
       Session: Session,
       Store: Store,
+      Text: Text,
       Transport: Transport,
       User: User,
       Workspace: Workspace,
       inheritPrototype: inheritPrototype,
       getInvalidProperties: getInvalidProperties,
+      getConstructorFromModelType: getConstructorFromModelType,
+      createModelFromModelType: createModelFromModelType,
       trim: trim,
       ltrim: ltrim,
       rtrim: rtrim,
@@ -52,7 +55,7 @@ var TGI = {
 /**
  * Constructor
  */
- function Attribute(args, arg2) {
+function Attribute(args, arg2) {
   var splitTypes; // For String(30) type
   if (false === (this instanceof Attribute)) throw new Error('new operator required');
   if (typeof args == 'string') {
@@ -182,6 +185,9 @@ Attribute.prototype.onEvent = function (events, callback) {
   this._eventListeners.push({events: events, callback: callback});
   return this;
 };
+Attribute.prototype.offEvent = function () {
+  this._eventListeners = [];
+};
 Attribute.prototype._emitEvent = function (event) {
   var i;
   for (i in this._eventListeners) {
@@ -192,6 +198,14 @@ Attribute.prototype._emitEvent = function (event) {
       }
     }
   }
+};
+Attribute.prototype.get = function () {
+  return this.value;
+};
+Attribute.prototype.set = function (newValue) {
+  this.value = newValue;
+  this._emitEvent('StateChange');
+  return this.value;
 };
 Attribute.prototype.coerce = function (value) {
   var newValue = value;
@@ -514,7 +528,7 @@ Command.prototype.execute = function (context) {
         context.render(this, 'View');
         break;
       case 'Presentation':
-        context.render(this.contents, this.presentationMode);
+        context.render(this);
         break;
     }
   } catch (e) {
@@ -599,6 +613,9 @@ Command.prototype.execute = function (context) {
     switch (event) {
       case 'Error':
         self._emitEvent('Error', obj);
+        break;
+      case 'Aborted':
+        self.abort();
         break;
       case 'Completed':
         for (var t in tasks) {
@@ -801,13 +818,21 @@ Interface.prototype.dispatch = function (request, response) {
 Interface.prototype.notify = function (message) {
   if (false === (message instanceof Message)) throw new Error('Message required');
 };
-Interface.prototype.render = function (presentation, presentationMode, callback) {
-  if (false === (presentation instanceof Presentation)) throw new Error('Presentation object required');
-  if (typeof presentationMode !== 'string') throw new Error('presentationMode required');
-  if (!contains(Command.getPresentationModes(), presentationMode)) throw new Error('Invalid presentationMode: ' + presentationMode);
-  if (callback && typeof callback != 'function') throw new Error('optional second argument must a commandRequest callback function');
+Interface.prototype.render = function (command, callback) {
+  if (false === (command instanceof Command)) throw new Error('Command object required');
+  //if (!contains(Command.getPresentationModes(), presentationMode)) throw new Error('Invalid presentationMode: ' + presentationMode);
+  //if (callback && typeof callback != 'function') throw new Error('optional second argument must a commandRequest callback function');
 };
 Interface.prototype.info = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+};
+Interface.prototype.done = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+};
+Interface.prototype.warn = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+};
+Interface.prototype.err = function (text) {
   if (!text || typeof text !== 'string') throw new Error('text required');
 };
 Interface.prototype.ok = function (prompt, callback) {
@@ -893,7 +918,7 @@ List.prototype.get = function (attribute) {
       return this._items[this._itemIndex][i];
   }
 };
-List.prototype.set = function (attribute,value) {
+List.prototype.set = function (attribute, value) {
   if (this._items.length < 1) throw new Error('list is empty');
   for (var i = 0; i < this.model.attributes.length; i++) {
     if (this.model.attributes[i].name.toUpperCase() == attribute.toUpperCase()) {
@@ -919,10 +944,19 @@ List.prototype.addItem = function (item) {
   this._itemIndex = this._items.length - 1;
   return this;
 };
-List.prototype.removeItem = function (item) {
+List.prototype.removeItem = function () {
   this._items.splice(this._itemIndex, 1);
   this._itemIndex--;
   return this;
+};
+List.prototype.findItemByID = function (id) {
+  var gotMore = this.moveFirst();
+  while (gotMore) {
+    if (id == this._items[this._itemIndex][0])
+      return true;
+    gotMore = this.moveNext();
+  }
+  return false;
 };
 List.prototype.indexedItem = function (index) {
   if (this._items.length < 1) return false;
@@ -999,7 +1033,10 @@ var Model = function (args) {
   this._eventListeners = [];
   this._errorConditions = {};
 };
-// Methods
+Model._ModelConstructor = {};
+/**
+ * Methods
+ */
 Model.prototype.toString = function () {
   return "a " + this.modelType;
 };
@@ -1033,7 +1070,7 @@ Model.prototype.getObjectStateErrors = function () {
 Model.prototype.get = function (attribute) {
   for (var i = 0; i < this.attributes.length; i++) {
     if (this.attributes[i].name.toUpperCase() == attribute.toUpperCase())
-      return this.attributes[i].value;
+      return this.attributes[i].get();
   }
 };
 Model.prototype.getAttributeType = function (attribute) {
@@ -1045,7 +1082,8 @@ Model.prototype.getAttributeType = function (attribute) {
 Model.prototype.set = function (attribute, value) {
   for (var i = 0; i < this.attributes.length; i++) {
     if (this.attributes[i].name.toUpperCase() == attribute.toUpperCase()) {
-      this.attributes[i].value = value;
+      this.attributes[i].set(value);
+      this._emitEvent('StateChange');
       return;
     }
   }
@@ -1352,6 +1390,62 @@ Store.prototype.getList = function () {
 };
 
 /**---------------------------------------------------------------------------------------------------------------------
+ * tgi-core/lib/core/tgi-core-text.source.js
+ */
+/**
+ * Constructor
+ */
+function Text(contents) {
+  if (false === (this instanceof Text)) throw new Error('new operator required');
+  this.contents = contents || '';
+  this._eventListeners = [];
+}
+/**
+ * Methods
+ */
+Text.prototype.toString = function () {
+  return 'Text: \'' + (this.contents || '') + '\'';
+};
+Text.prototype.get = function () {
+  return this.contents;
+};
+Text.prototype.set = function (newValue) {
+  this.contents = newValue;
+  this._emitEvent('StateChange');
+  return this.contents;
+};
+Text.prototype._emitEvent = function (event) {
+  var i;
+  for (i in this._eventListeners) {
+    if (this._eventListeners.hasOwnProperty(i)) {
+      var subscriber = this._eventListeners[i];
+      if ((subscriber.events.length && subscriber.events[0] === '*') || contains(subscriber.events, event)) {
+        subscriber.callback.call(this, event);
+      }
+    }
+  }
+};
+Text.prototype.onEvent = function (events, callback) {
+  if (!(events instanceof Array)) {
+    if (typeof events != 'string') throw new Error('subscription string or array required');
+    events = [events]; // coerce to array
+  }
+  if (typeof callback != 'function') throw new Error('callback is required');
+  // Check known Events
+  for (var i in events) {
+    if (events.hasOwnProperty(i))
+      if (events[i] != '*')
+        if (!contains(['StateChange'], events[i]))
+          throw new Error('Unknown command event: ' + events[i]);
+  }
+  // All good add to chain
+  this._eventListeners.push({events: events, callback: callback});
+  return this;
+};
+Text.prototype.offEvent = function () {
+  this._eventListeners = [];
+};
+/**---------------------------------------------------------------------------------------------------------------------
  * tgi-core/lib/core/tgi-core-transport.source.js
  */
 /* istanbul ignore next */
@@ -1410,6 +1504,7 @@ function Transport(location, callback) {
     console.log('socket.io (' + self.location + ') disconnect: ' + reason);
   });
 }
+Transport.showLog=false; // set to true to show message
 /**
  * pub/sub thingies
  */
@@ -1418,6 +1513,8 @@ Transport.setMessageHandler = function (message, handler) {
   Transport.messageHandlers[message] = handler;
 };
 Transport.hostMessageProcess = function (obj, fn) {
+  if (Transport.showLog)
+    console.log('Transport.hostMessageProcess ' + JSON.stringify(obj));
   if (Transport.messageHandlers[obj.type]) {
     Transport.messageHandlers[obj.type](obj.contents, fn);
   } else {
@@ -1446,10 +1543,14 @@ Transport.prototype.send = function (message, callback) {
     return;
   }
   if (typeof callback != 'undefined') {
+    if (Transport.showLog)
+      console.log('Transport emit ' + JSON.stringify(message));
     self.socket.emit('ackmessage', message, function (msg) {
       callback.call(self, msg);
     });
   } else {
+    if (Transport.showLog)
+      console.log('Transport send ' + JSON.stringify(message));
     self.socket.send(message);
   }
 };
@@ -1921,6 +2022,8 @@ var Application = function (args) {
   this.set('brand', 'NEW APP');
 };
 Application.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Application = Application;
+
 
 /**
  * Methods
@@ -1978,6 +2081,21 @@ Application.prototype.info = function (text) {
   if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
   if (!text || typeof text !== 'string') throw new Error('text parameter required');
   this.primaryInterface.info(text);
+};
+Application.prototype.done = function (text) {
+  if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
+  if (!text || typeof text !== 'string') throw new Error('text parameter required');
+  this.primaryInterface.done(text);
+};
+Application.prototype.warn = function (text) {
+  if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
+  if (!text || typeof text !== 'string') throw new Error('text parameter required');
+  this.primaryInterface.warn(text);
+};
+Application.prototype.err = function (text) {
+  if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
+  if (!text || typeof text !== 'string') throw new Error('text parameter required');
+  this.primaryInterface.err(text);
 };
 Application.prototype.ok = function (prompt, callback) {
   if (false === (this.primaryInterface instanceof Interface)) throw new Error('interface not set');
@@ -2047,6 +2165,7 @@ var Log = function (args) {
   this.modelType = "Log";
 };
 Log.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Log = Log;
 /**
  * Methods
  */
@@ -2074,6 +2193,7 @@ var Presentation = function (args) {
   this.modelType = "Presentation";
 };
 Presentation.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Presentation = Presentation;
 /*
  * Methods
  */
@@ -2085,11 +2205,11 @@ Presentation.prototype.getObjectStateErrors = function (modelCheckOnly) {
     var gotError = false;
     if (contents instanceof Array) {
       for (i = 0; i < contents.length; i++) {
-        if (!(contents[i] instanceof Command || contents[i] instanceof Attribute || contents[i] instanceof List || typeof contents[i] == 'string'))
+        if (!(contents[i] instanceof Text || contents[i] instanceof Command || contents[i] instanceof Attribute || contents[i] instanceof List || typeof contents[i] == 'string'))
           gotError = true;
       }
       if (gotError)
-        this.validationErrors.push('contents elements must be Command, Attribute, List or string');
+        this.validationErrors.push('contents elements must be Text, Command, Attribute, List or string');
     } else {
       this.validationErrors.push('contents must be Array');
     }
@@ -2097,6 +2217,7 @@ Presentation.prototype.getObjectStateErrors = function (modelCheckOnly) {
   this.validationMessage = this.validationErrors.length > 0 ? this.validationErrors[0] : '';
   return this.validationErrors;
 };
+
 Presentation.prototype.validate = function (callback) {
   var presentation = this;
   if (typeof callback != 'function') throw new Error('callback is required');
@@ -2113,32 +2234,43 @@ Presentation.prototype.validate = function (callback) {
   var attributeCount = 0;
   var checkCount = 0;
   var contents = this.get('contents');
-  if (contents instanceof Array) {
-    // Count first
-    for (i = 0; i < contents.length; i++) {
-      if (contents[i] instanceof Attribute) {
-        attributeCount++;
-      }
-    }
-    // Launch validations
-    for (i = 0; i < contents.length; i++) {
-      if (contents[i] instanceof Attribute) {
-        contents[i].validate(checkAttrib);
-      }
+  if (!(contents instanceof Array))
+    contents = [];
+
+  // Count first
+  for (i = 0; i < contents.length; i++) {
+    if (contents[i] instanceof Attribute) {
+      attributeCount++;
     }
   }
+  // Launch validations
+  for (i = 0; i < contents.length; i++) {
+    if (contents[i] instanceof Attribute) {
+      contents[i].validate(checkAttrib);
+    }
+  }
+
+  // If no attributes call callback since checkAttrib not called
+  if (contents.length < 1)
+    finishUp();
+
   function checkAttrib() {
     checkCount++;
     // this is the attribute TODO this bad usage ?
     if (this.validationMessage) // jshint ignore:line
       gotError = true;
-    if (checkCount==checkCount) {
+    if (attributeCount == checkCount) {
       if (gotError)
         presentation.validationErrors.push('contents has validation errors');
-      presentation.validationMessage = presentation.validationErrors.length > 0 ? presentation.validationErrors[0] : '';
-      callback();
+      finishUp();
     }
   }
+
+  function finishUp() {
+    presentation.validationMessage = presentation.validationErrors.length > 0 ? presentation.validationErrors[0] : '';
+    callback();
+  }
+
 };
 
 /**
@@ -2164,6 +2296,7 @@ var Session = function (args) {
   this.set('active', false);
 };
 Session.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Session = Session;
 /*
  * Methods
  */
@@ -2268,9 +2401,10 @@ var User = function (args) {
   args.attributes.push(new Attribute({name: 'email', type: 'String(20)'}));
   Model.call(this, args);
   this.modelType = "User";
-  this.set('active',false);
+  this.set('active', false);
 };
 User.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.User = User;
 /**
  * tequila
  * workspace-class
@@ -2292,6 +2426,7 @@ function Workspace(args) {
   this.modelType = "Workspace";
 }
 Workspace.prototype = Object.create(Model.prototype);
+Model._ModelConstructor.Workspace = Workspace;
 /*
  * Methods
  */
@@ -2533,6 +2668,23 @@ var getInvalidProperties = function (args, allowedProperties) {
   return props;
 };
 
+/**
+ * getConstructorFromModelType(modelType)
+ */
+var getConstructorFromModelType = function (modelType) {
+  return Model._ModelConstructor[modelType] || Model;
+};
+
+/**
+ * createModelFromModelType(modelType)
+ */
+var createModelFromModelType = function (modelType) {
+  var ProxyModel = getConstructorFromModelType(modelType);
+  return new ProxyModel();
+};
+
+
+
 /**---------------------------------------------------------------------------------------------------------------------
  * tgi-core/lib/utility/tgi-core-strings.source.js
  */
@@ -2628,7 +2780,7 @@ var cpad = function (expr, length, fillChar) {
 TGI.INTERFACE = TGI.INTERFACE || {};
 TGI.INTERFACE.FRAMEWORK7 = function () {
   return {
-    version: '0.0.3',
+    version: '0.0.4',
     Framework7Interface: Framework7Interface
   };
 };
@@ -2667,13 +2819,13 @@ Framework7Interface.prototype = Object.create(Interface.prototype);
 Framework7Interface.prototype.canMock = function () {
   return this.vendor ? true : false;
 };
-Framework7Interface.prototype.start = function (application, presentation, callBack) {
+Framework7Interface.prototype.start = function (application, presentation, callback) {
   if (!(application instanceof Application)) throw new Error('Application required');
   if (!(presentation instanceof Presentation)) throw new Error('presentation required');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (typeof callback != 'function') throw new Error('callback required');
   this.application = application;
   this.presentation = presentation;
-  this.startCallback = callBack;
+  this.startCallback = callback;
   if (!this.vendor) throw new Error('Error initializing Framework7');
   try {
     if (!Framework7Interface._f7) {
@@ -2701,7 +2853,7 @@ Framework7Interface.prototype.dispatch = function (request, response) {
         // this.activatePanel(request.command);
         requestHandled = true;
       } else {
-        requestHandled = !this.application.dispatch(request);
+        requestHandled = this.application.dispatch(request);
       }
     }
     if (!requestHandled && this.startcallback) {
@@ -2713,18 +2865,13 @@ Framework7Interface.prototype.dispatch = function (request, response) {
     }
   }
 };
-Framework7Interface.prototype.render = function (item, presentationMode, callback) {
+Framework7Interface.prototype.render = function (command, callback) {
+
   var framework7Interface = this;
-  var presentation = item;
-  /* todo broke tests :(
-  if (false === (presentation instanceof Presentation)) throw new Error('Presentation object required');
-  if (typeof presentationMode !== 'string') throw new Error('presentationMode required');
-  if (!contains(Command.getPresentationModes(), presentationMode)) throw new Error('Invalid presentationMode: ' + presentationMode);
-  if (callback && typeof callback != 'function') throw new Error('optional second argument must a commandRequest callback function');
-*/
-  if (item instanceof Command) {
-    presentation = item.contents;
-  }
+  if (false === (command instanceof Command)) throw new Error('Command object required');
+
+  var presentation = command.contents;
+
   /**
    * find the presentation on the toolbar first
    */
@@ -2745,8 +2892,6 @@ Framework7Interface.prototype.render = function (item, presentationMode, callbac
       return;
     }
   }
-//framework7Interface.toolBarMoreCommands = [];
-
 };
 
 /**
@@ -2883,26 +3028,38 @@ Framework7Interface.prototype.updateBrand = function (text) {
  */
 Framework7Interface.prototype.info = function (text) {
   if (!text || typeof text !== 'string') throw new Error('text required');
-  Framework7Interface._f7.addNotification({title: this.application.get('brand'), message: text, hold:3000});
+  Framework7Interface._f7.addNotification({title: 'Information', message: text, hold:3000});
 };
-Framework7Interface.prototype.ok = function (prompt, callBack) {
+Framework7Interface.prototype.done = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+  Framework7Interface._f7.addNotification({title: 'Success', message: text, hold:3000});
+};
+Framework7Interface.prototype.warn = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+  Framework7Interface._f7.addNotification({title: 'Warning', message: text, hold:3000});
+};
+Framework7Interface.prototype.err = function (text) {
+  if (!text || typeof text !== 'string') throw new Error('text required');
+  Framework7Interface._f7.addNotification({title: 'ERROR', message: text, hold:3000});
+};
+Framework7Interface.prototype.ok = function (prompt, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (typeof callback != 'function') throw new Error('callback required');
   if (this.okPending) {
     delete this.okPending;
-    callBack();
+    callback();
   } else {
     Framework7Interface._f7.alert(prompt.replace(/\n/g,'<br>'), this.application.get('brand'), function () {
-      callBack();
+      callback();
     });
   }
 };
-Framework7Interface.prototype.yesno = function (prompt, callBack) {
+Framework7Interface.prototype.yesno = function (prompt, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (typeof callback != 'function') throw new Error('callback required');
   if (this.yesnoPending) {
     delete this.yesnoPending;
-    callBack(this.yesnoResponse);
+    callback(this.yesnoResponse);
   } else {
     Framework7Interface._f7.modal({
       text:prompt.replace(/\n/g,'<br>'),
@@ -2911,43 +3068,43 @@ Framework7Interface.prototype.yesno = function (prompt, callBack) {
       buttons: [{
         text: 'Yes',
         onClick: function () {
-          callBack(true);
+          callback(true);
         }
       },{
         text: 'No',
         onClick: function () {
-          callBack(false);
+          callback(false);
         }
       }]
     });
   }
 };
-Framework7Interface.prototype.ask = function (prompt, attribute, callBack) {
+Framework7Interface.prototype.ask = function (prompt, attribute, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
-  if (false === (attribute instanceof Attribute)) throw new Error('instance of Attribute a required parameter');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (false === (attribute instanceof Attribute)) throw new Error('attribute or callback expected');
+  if (typeof callback != 'function') throw new Error('callback required');
   if (this.askPending) {
     delete this.askPending;
-    callBack(this.askResponse);
+    callback(this.askResponse);
   } else {
     Framework7Interface._f7.prompt(prompt.replace(/\n/g,'<br>'), this.application.get('brand'),
       function (answer) {
-        callBack(answer);
+        callback(answer);
       },
       function () {
-        callBack();
+        callback();
       }
     );
   }
 };
-Framework7Interface.prototype.choose = function (prompt, choices, callBack) {
+Framework7Interface.prototype.choose = function (prompt, choices, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
   if (false === (choices instanceof Array)) throw new Error('choices array required');
   if (!choices.length) throw new Error('choices array empty');
-  if (typeof callBack != 'function') throw new Error('callBack required');
+  if (typeof callback != 'function') throw new Error('callback required');
   if (this.choosePending) {
     delete this.choosePending;
-    callBack(Interface.firstMatch(this.chooseResponse, choices));
+    callback(Interface.firstMatch(this.chooseResponse, choices));
   } else {
     var groups = [];
     groups.push([{text: prompt.replace(/\n/g,'<br>'), label: true}]);
@@ -2969,47 +3126,47 @@ Framework7Interface.prototype.choose = function (prompt, choices, callBack) {
    * Since framework does not return any info in callback
    */
   function cbCancel() {
-    callBack();
+    callback();
   }
 
   function cb0() {
-    callBack(choices[0]);
+    callback(choices[0]);
   }
 
   function cb1() {
-    callBack(choices[1]);
+    callback(choices[1]);
   }
 
   function cb2() {
-    callBack(choices[2]);
+    callback(choices[2]);
   }
 
   function cb3() {
-    callBack(choices[3]);
+    callback(choices[3]);
   }
 
   function cb4() {
-    callBack(choices[4]);
+    callback(choices[4]);
   }
 
   function cb5() {
-    callBack(choices[5]);
+    callback(choices[5]);
   }
 
   function cb6() {
-    callBack(choices[6]);
+    callback(choices[6]);
   }
 
   function cb7() {
-    callBack(choices[7]);
+    callback(choices[7]);
   }
 
   function cb8() {
-    callBack(choices[8]);
+    callback(choices[8]);
   }
 
   function cb9() {
-    callBack(choices[9]);
+    callback(choices[9]);
   }
 };
 /**---------------------------------------------------------------------------------------------------------------------
@@ -3269,7 +3426,10 @@ Framework7Interface.prototype.showView = function (toolBarCommand) {
           var toolBarCommandNo = parseInt(right(rootID, rootID.length - 6)) - 1;
           var subMenuNo = parseInt(right(htmlID, htmlID.length - dash)) - 1;
           var dashizzle = framework7Interface.toolBarCommands[toolBarCommandNo].subMenu[subMenuNo];
-          dashizzle.command.execute(framework7Interface);
+          if (dashizzle.command.type == 'Stub')
+            framework7Interface.info('The ' + dashizzle.command.name + ' feature is not available at this time.');
+          else
+            dashizzle.command.execute(framework7Interface);
         });
       }
     }
