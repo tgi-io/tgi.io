@@ -10,16 +10,8 @@
     name: 'about',
     type: 'Presentation',
     icon: 'fa-info-circle',
+    theme: 'default',
     contents: aboutPresentation
   });
   site.navContents.push(aboutCommand);
-
-  /**
-   * After start, force about
-   */
-  setTimeout(function () {
-    console.log('shizzle');
-    aboutCommand.execute(ui);
-  }, 0);
-
 }());

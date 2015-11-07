@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.4.14',
+      version: '0.4.19',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -152,15 +152,24 @@ function Attribute(args, arg2) {
 Attribute.ModelID = function (model) {
   if (false === (this instanceof Attribute.ModelID)) throw new Error('new operator required');
   if (false === (model instanceof Model)) throw new Error('must be constructed with Model');
+  var shorty = model.getShortName();
+  if (shorty)
+    this.name = shorty;
   this.value = model.get('id');
   this.constructorFunction = model.constructor;
   this.modelType = model.modelType;
 };
 Attribute.ModelID.prototype.toString = function () {
-  if (typeof this.value == 'string')
-    return 'ModelID(' + this.modelType + ':\'' + this.value + '\')';
+
+  if (this.name)
+    return this.modelType + ' ' + this.name;
   else
-    return 'ModelID(' + this.modelType + ':' + this.value + ')';
+    return this.modelType + ' ' + this.value;
+
+  //if (typeof this.value == 'string')
+  //  return 'ModelID(' + this.modelType + ':\'' + this.value + '\')';
+  //else
+  //  return this.modelType + ' ' + this.value;
 };
 /**
  * Methods
@@ -203,7 +212,17 @@ Attribute.prototype.get = function () {
   return this.value;
 };
 Attribute.prototype.set = function (newValue) {
-  this.value = newValue;
+  switch (this.type) {
+    case 'Model':
+      if (newValue instanceof Attribute.ModelID)
+        this.value = newValue;
+      else {
+        throw new Error('set error: value must be Attribute.ModelID');
+      }
+      break;
+    default:
+      this.value = newValue;
+  }
   this._emitEvent('StateChange');
   return this.value;
 };
@@ -1080,6 +1099,16 @@ Model.prototype.get = function (attribute) {
     if (this.attributes[i].name.toUpperCase() == attribute.toUpperCase())
       return this.attributes[i].get();
   }
+};
+Model.prototype.getShortName = function () {
+  for (var i = 0; i < this.attributes.length; i++) {
+    if (this.attributes[i].type == 'String')
+      return this.attributes[i].get();
+  }
+  return '';
+};
+Model.prototype.getLongName = function () {
+  return this.getShortName();
 };
 Model.prototype.getAttributeType = function (attribute) {
   for (var i = 0; i < this.attributes.length; i++) {
@@ -2337,7 +2366,9 @@ Session.prototype.startSession = function (store, userName, password, ip, callba
     // Got user create new session
     // TODO: Make this server side tied to yet to be designed store integrated authentication
     list.moveFirst();
-    self.set('userID', list.get('id'));
+    list.model.set('id', list.get('id')); // todo look how shitty List is designed - fix is to make moveFirst etc
+    list.model.set('name', list.get('name')); // todo (ctd) set model attribs from list or remove model from list
+    self.set('userID', new Attribute.ModelID(list.model));
     self.set('active', true);
     self.set('passCode', passCode);
     self.set('ipAddress', ip);
@@ -2788,7 +2819,7 @@ var cpad = function (expr, length, fillChar) {
 TGI.INTERFACE = TGI.INTERFACE || {};
 TGI.INTERFACE.BOOTSTRAP = function () {
   return {
-    version: '0.1.1',
+    version: '0.1.3',
     BootstrapInterface: BootstrapInterface
   };
 };
@@ -2858,7 +2889,7 @@ BootstrapInterface.prototype.dispatch = function (request, response) {
   try {
     if (this.application) {
       if (request.type == 'Command' && request.command.type == 'Presentation') {
-        this.activatePanel(request.command);
+        request.command.execute(this);
         requestHandled = true;
       } else {
         requestHandled = this.application.dispatch(request);
@@ -3538,7 +3569,11 @@ BootstrapInterface.prototype.renderPanelBody = function (panel, command) {
 
       for (j = 1; j < list.model.attributes.length; j++) { // skip id (0))
         var dAttribute = list.model.attributes[j];
-        addEle(tBodyRow, 'td').innerHTML = list.get(dAttribute.name);
+        var dValue = list.get(dAttribute.name);
+        if (dValue.name) // todo instanceof Attribute.ModelID did not work so kludge here
+          addEle(tBodyRow, 'td').innerHTML = dValue.name;
+        else
+          addEle(tBodyRow, 'td').innerHTML = dValue;
       }
       gotData = list.moveNext();
     }
@@ -3771,7 +3806,6 @@ BootstrapInterface.prototype.htmlDialog = function () {
     }
   });
 };
-
 BootstrapInterface.prototype.info = function (text) {
   var self = this;
   var notify = $.notify(
@@ -3835,8 +3869,6 @@ BootstrapInterface.prototype.info = function (text) {
     notify.close();
   }, 3000);
 };
-
-
 BootstrapInterface.prototype.done = function (text) {
   var self = this;
   var notify = $.notify(
@@ -3900,7 +3932,6 @@ BootstrapInterface.prototype.done = function (text) {
     notify.close();
   }, 3000);
 };
-
 BootstrapInterface.prototype.warn = function (text) {
   var self = this;
   var notify = $.notify(
@@ -3964,8 +3995,6 @@ BootstrapInterface.prototype.warn = function (text) {
     notify.close();
   }, 3000);
 };
-
-
 BootstrapInterface.prototype.err = function (text) {
   var self = this;
   var notify = $.notify(
@@ -4029,9 +4058,6 @@ BootstrapInterface.prototype.err = function (text) {
     notify.close();
   }, 3000);
 };
-
-
-
 BootstrapInterface.prototype.ok = function (prompt, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
   if (typeof callback != 'function') throw new Error('callback required');
@@ -4376,7 +4402,7 @@ LocalStore.prototype._putStore = function () {
 TGI.STORE = TGI.STORE || {};
 TGI.STORE.REMOTE = function () {
   return {
-    version: '0.0.?',
+    version: '0.0.9',
     RemoteStore: RemoteStore
   };
 };
@@ -4480,24 +4506,50 @@ RemoteStore.prototype.putModel = function (model, callback) {
     if (false && msg == 'Ack') { // todo wtf is this
       callback(model);
     } else if (msg.type == 'PutModelAck') {
-      var c = msg.contents;
+      var contents = msg.contents;
+      //for (var b in model.attributes) {
+      //  if (model.attributes[b].type == 'Model') {
+      //    console.log('value before ' + JSON.stringify(model.attributes[b].value));
+      //  }
+      //}
       model.attributes = [];
-      for (var a in c.attributes) {
-        if (c.attributes.hasOwnProperty(a)) {
+      for (var a in contents.attributes) {
+        if (contents.attributes.hasOwnProperty(a)) {
           var attrib;
-          if (c.attributes[a].type=='Model') {
-            var v = new Attribute.ModelID(new Model());
-            v.value = c.attributes[a].value;
-            attrib = new Attribute({name:c.attributes[a].name, type:'Model',value:v});
+          if (contents.attributes[a].type == 'Model') {
+
+            var sourceModel = createModelFromModelType(contents.attributes[a].modelType);
+            var modelID = new Attribute.ModelID(sourceModel);
+
+            modelID.value = contents.attributes[a].value.value;
+            if (contents.attributes[a].value.name)
+              modelID.name = contents.attributes[a].value.name;
+
+
+
+            //  var v = new Attribute.ModelID(new Model());
+            //  v.value = c.attributes[a].value;
+            //  attrib = new Attribute({name:c.attributes[a].name, type:'Model',value:v});
+
+            attrib = new Attribute({name: contents.attributes[a].name, type: contents.attributes[a].type, value: modelID});
+
+            //attrib = new Attribute(c.attributes[a].name, c.attributes[a].type);
+            //attrib.value = c.attributes[a].value;
+
+            //console.log('modelID ' + JSON.stringify(modelID));
+            //console.log('contents    ' + JSON.stringify(contents.attributes[a].value));
+            //console.log('value after ' + JSON.stringify(attrib.value));
+
           } else {
-            attrib = new Attribute(c.attributes[a].name, c.attributes[a].type);
-            attrib.value = c.attributes[a].value;
+            attrib = new Attribute(contents.attributes[a].name, contents.attributes[a].type);
+            attrib.value = contents.attributes[a].value;
           }
           model.attributes.push(attrib);
         }
       }
-      if (typeof c == 'string')
-        callback(model, c);
+
+      if (typeof contents == 'string')
+        callback(model, contents);
       else
         callback(model);
     } else {
@@ -4549,8 +4601,8 @@ RemoteStore.prototype.getList = function (list, filter, arg3, arg4) {
       //console.log('before ' + i + ':' + filter[i] + '');
       if (filter[i] instanceof RegExp) {
         filter[i] = filter[i].toString();
-        filter[i] = left(filter[i],filter[i].length-1);
-        filter[i] = right(filter[i],filter[i].length-1);
+        filter[i] = left(filter[i], filter[i].length - 1);
+        filter[i] = right(filter[i], filter[i].length - 1);
         filter[i] = 'RegExp:' + filter[i];
       }
       //console.log('after ' + i + ':' + filter[i] + '');

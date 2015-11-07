@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.4.13',
+      version: '0.4.14',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -497,13 +497,15 @@ Command.prototype._emitEvent = function (event, obj) {
   //  this._eventListeners = [];
 };
 Command.prototype.execute = function (context) {
-  if (!this.type) throw new Error('command not implemented');
-  if (!contains(['Function', 'Procedure', 'Menu', 'Presentation'], this.type)) throw new Error('command type ' + this.type + ' not implemented');
+  var command = this;
+  var args = arguments;
+  if (!command.type) throw new Error('command not implemented');
+  if (!contains(['Function', 'Procedure', 'Menu', 'Presentation'], command.type)) throw new Error('command type ' + command.type + ' not implemented');
   var errors;
-  switch (this.type) {
+  switch (command.type) {
     case 'Presentation':
-      if (!(this.contents instanceof Presentation)) throw new Error('contents must be a Presentation');
-      errors = this.contents.getObjectStateErrors();
+      if (!(command.contents instanceof Presentation)) throw new Error('contents must be a Presentation');
+      errors = command.contents.getObjectStateErrors();
       if (errors.length) {
         if (errors.length > 1)
           throw new Error('error executing Presentation: multiple errors');
@@ -513,11 +515,10 @@ Command.prototype.execute = function (context) {
       if (!(context instanceof Interface)) throw new Error('interface param required');
       break;
   }
-  var self = this;
-  var args = arguments;
-  this._emitEvent('BeforeExecute');
+
+  command._emitEvent('BeforeExecute');
   try {
-    switch (this.type) {
+    switch (command.type) {
       case 'Function':
         setTimeout(callFunc, 0);
         break;
@@ -525,34 +526,41 @@ Command.prototype.execute = function (context) {
         setTimeout(procedureExecuteInit, 0);
         break;
       case 'Menu':
-        context.render(this, 'View');
+        context.render(command, 'View');
         break;
       case 'Presentation':
-        context.render(this);
+        if (command.contents.preRenderCallback) {
+          command.contents.preRenderCallback(command, function () {
+            context.render(command);
+          });
+        } else {
+          context.render(command);  
+        }
         break;
     }
   } catch (e) {
-    this.error = e;
-    this._emitEvent('Error', e);
-    this._emitEvent('Completed');
-    this.status = -1;
+    command.error = e;
+    command._emitEvent('Error', e);
+    command._emitEvent('Completed');
+    command.status = -1;
   }
-  this._emitEvent('AfterExecute');
+  command._emitEvent('AfterExecute');
+  
   function callFunc() {
-    self.status = 0;
+    command.status = 0;
     try {
-      self.contents.apply(self, args); // give function this context to command object (self)
+      command.contents.apply(command, args); // give function this context to command object (command)
     } catch (e) {
-      self.error = e;
-      self._emitEvent('Error', e);
-      self._emitEvent('Completed');
-      self.status = -1;
+      command.error = e;
+      command._emitEvent('Error', e);
+      command._emitEvent('Completed');
+      command.status = -1;
     }
   }
 
   function procedureExecuteInit() {
-    self.status = 0;
-    var tasks = self.contents.tasks || [];
+    command.status = 0;
+    var tasks = command.contents.tasks || [];
     for (var t = 0; t < tasks.length; t++) {
       // shorthand for function command gets coerced into longhand
       if (typeof tasks[t] == 'function') {
@@ -562,7 +570,7 @@ Command.prototype.execute = function (context) {
       // Initialize if not done
       if (!tasks[t].command._parentProcedure) {
         tasks[t].command._taskIndex = t;
-        tasks[t].command._parentProcedure = self;
+        tasks[t].command._parentProcedure = command;
         tasks[t].command.onEvent('*', ProcedureEvents);
       }
       tasks[t].command.status = undefined;
@@ -571,7 +579,7 @@ Command.prototype.execute = function (context) {
   }
 
   function procedureExecute() {
-    var tasks = self.contents.tasks || [];
+    var tasks = command.contents.tasks || [];
     for (var t = 0; t < tasks.length; t++) {
       // Execute if it is time
       var canExecute = true;
@@ -608,14 +616,14 @@ Command.prototype.execute = function (context) {
   }
 
   function ProcedureEvents(event, obj) {
-    var tasks = self.contents.tasks;
+    var tasks = command.contents.tasks;
     var allTasksDone = true; // until proved wrong ...
     switch (event) {
       case 'Error':
-        self._emitEvent('Error', obj);
+        command._emitEvent('Error', obj);
         break;
       case 'Aborted':
-        self.abort();
+        command.abort();
         break;
       case 'Completed':
         for (var t in tasks) {
@@ -626,7 +634,7 @@ Command.prototype.execute = function (context) {
           }
         }
         if (allTasksDone)
-          self.complete(); // todo when all run
+          command.complete(); // todo when all run
         else
           procedureExecute();
         break;
@@ -2780,7 +2788,7 @@ var cpad = function (expr, length, fillChar) {
 TGI.INTERFACE = TGI.INTERFACE || {};
 TGI.INTERFACE.BOOTSTRAP = function () {
   return {
-    version: '0.1.1',
+    version: '0.1.2',
     BootstrapInterface: BootstrapInterface
   };
 };
@@ -2850,7 +2858,7 @@ BootstrapInterface.prototype.dispatch = function (request, response) {
   try {
     if (this.application) {
       if (request.type == 'Command' && request.command.type == 'Presentation') {
-        this.activatePanel(request.command);
+        request.command.execute(this);
         requestHandled = true;
       } else {
         requestHandled = this.application.dispatch(request);
@@ -3763,7 +3771,6 @@ BootstrapInterface.prototype.htmlDialog = function () {
     }
   });
 };
-
 BootstrapInterface.prototype.info = function (text) {
   var self = this;
   var notify = $.notify(
@@ -3827,8 +3834,6 @@ BootstrapInterface.prototype.info = function (text) {
     notify.close();
   }, 3000);
 };
-
-
 BootstrapInterface.prototype.done = function (text) {
   var self = this;
   var notify = $.notify(
@@ -3892,7 +3897,6 @@ BootstrapInterface.prototype.done = function (text) {
     notify.close();
   }, 3000);
 };
-
 BootstrapInterface.prototype.warn = function (text) {
   var self = this;
   var notify = $.notify(
@@ -3956,8 +3960,6 @@ BootstrapInterface.prototype.warn = function (text) {
     notify.close();
   }, 3000);
 };
-
-
 BootstrapInterface.prototype.err = function (text) {
   var self = this;
   var notify = $.notify(
@@ -4021,9 +4023,6 @@ BootstrapInterface.prototype.err = function (text) {
     notify.close();
   }, 3000);
 };
-
-
-
 BootstrapInterface.prototype.ok = function (prompt, callback) {
   if (!prompt || typeof prompt !== 'string') throw new Error('prompt required');
   if (typeof callback != 'function') throw new Error('callback required');

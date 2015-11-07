@@ -5,7 +5,7 @@
 (function () {
   var loginPresentation = new tgi.Presentation();
   var storePicks = ['MemoryStore', 'LocalStore', 'HostStore'];
-  var login, password;
+  var login, password, loginButton;
   loginPresentation.set('contents', [
     '>',
     '**Please login**',
@@ -27,7 +27,7 @@
     }),
     //new tgi.Attribute({name: 'store', label: 'Store', type: 'String', quickPick: storePicks, value: '(memory store)'}),
     '>',
-    new tgi.Command({name: 'Login', type: 'Function', theme: 'info', icon: 'fa-sign-in', contents: loginSession})
+    loginButton = new tgi.Command({name: 'Login', type: 'Function', theme: 'info', icon: 'fa-sign-in', contents: loginSession})
   ]);
 
   var loginCommand = new tgi.Command({
@@ -47,13 +47,14 @@
    */
   //setTimeout(function () {
   //  loginCommand.execute(ui);
-  //}, 0);
+  //  loginButton.execute(ui);
+  //}, 250);
 
   /**
    * Start session when info submitted
    */
   function loginSession() {
-    tgi.Transport.showLog=false;
+    //tgi.Transport.showLog=true;
     try {
       loginPresentation.validate(function () {
         if (loginPresentation.validationMessage) {
@@ -64,7 +65,7 @@
           if (err)
             app.err('' + err);
           else
-            app.info('it worked');
+            app.info('session ' + session.get('id'));
         });
 
       });

@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.4.14',
+      version: '0.4.16',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -152,15 +152,25 @@ function Attribute(args, arg2) {
 Attribute.ModelID = function (model) {
   if (false === (this instanceof Attribute.ModelID)) throw new Error('new operator required');
   if (false === (model instanceof Model)) throw new Error('must be constructed with Model');
-  this.value = model.get('id');
+  var shorty = model.getShortName();
+  if (shorty)
+    this.value = [model.get('id'), shorty];
+  else
+    this.value = model.get('id');
   this.constructorFunction = model.constructor;
   this.modelType = model.modelType;
 };
 Attribute.ModelID.prototype.toString = function () {
-  if (typeof this.value == 'string')
-    return 'ModelID(' + this.modelType + ':\'' + this.value + '\')';
+
+  if (this.value instanceof Array)
+    return this.modelType + ' ' + this.value[1];
   else
-    return 'ModelID(' + this.modelType + ':' + this.value + ')';
+    return this.modelType + ' ' + this.value;
+
+  //if (typeof this.value == 'string')
+  //  return 'ModelID(' + this.modelType + ':\'' + this.value + '\')';
+  //else
+  //  return this.modelType + ' ' + this.value;
 };
 /**
  * Methods
@@ -1080,6 +1090,16 @@ Model.prototype.get = function (attribute) {
     if (this.attributes[i].name.toUpperCase() == attribute.toUpperCase())
       return this.attributes[i].get();
   }
+};
+Model.prototype.getShortName = function () {
+  for (var i = 0; i < this.attributes.length; i++) {
+    if (this.attributes[i].type == 'String')
+      return this.attributes[i].get();
+  }
+  return '';
+};
+Model.prototype.getLongName = function () {
+  return this.getShortName();
 };
 Model.prototype.getAttributeType = function (attribute) {
   for (var i = 0; i < this.attributes.length; i++) {
@@ -3697,7 +3717,7 @@ LocalStore.prototype._putStore = function () {
 TGI.STORE = TGI.STORE || {};
 TGI.STORE.REMOTE = function () {
   return {
-    version: '0.0.?',
+    version: '0.0.3',
     RemoteStore: RemoteStore
   };
 };
@@ -3802,21 +3822,23 @@ RemoteStore.prototype.putModel = function (model, callback) {
       callback(model);
     } else if (msg.type == 'PutModelAck') {
       var c = msg.contents;
+      /*** TODO: update values from host ...
       model.attributes = [];
       for (var a in c.attributes) {
         if (c.attributes.hasOwnProperty(a)) {
           var attrib;
-          if (c.attributes[a].type=='Model') {
-            var v = new Attribute.ModelID(new Model());
-            v.value = c.attributes[a].value;
-            attrib = new Attribute({name:c.attributes[a].name, type:'Model',value:v});
-          } else {
+          //if (c.attributes[a].type=='Model') {
+          //  var v = new Attribute.ModelID(new Model());
+          //  v.value = c.attributes[a].value;
+          //  attrib = new Attribute({name:c.attributes[a].name, type:'Model',value:v});
+          //} else {
             attrib = new Attribute(c.attributes[a].name, c.attributes[a].type);
             attrib.value = c.attributes[a].value;
-          }
+          //}
           model.attributes.push(attrib);
         }
       }
+      */
       if (typeof c == 'string')
         callback(model, c);
       else

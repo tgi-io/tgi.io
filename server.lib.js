@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.4.14',
+      version: '0.4.19',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -152,15 +152,24 @@ function Attribute(args, arg2) {
 Attribute.ModelID = function (model) {
   if (false === (this instanceof Attribute.ModelID)) throw new Error('new operator required');
   if (false === (model instanceof Model)) throw new Error('must be constructed with Model');
+  var shorty = model.getShortName();
+  if (shorty)
+    this.name = shorty;
   this.value = model.get('id');
   this.constructorFunction = model.constructor;
   this.modelType = model.modelType;
 };
 Attribute.ModelID.prototype.toString = function () {
-  if (typeof this.value == 'string')
-    return 'ModelID(' + this.modelType + ':\'' + this.value + '\')';
+
+  if (this.name)
+    return this.modelType + ' ' + this.name;
   else
-    return 'ModelID(' + this.modelType + ':' + this.value + ')';
+    return this.modelType + ' ' + this.value;
+
+  //if (typeof this.value == 'string')
+  //  return 'ModelID(' + this.modelType + ':\'' + this.value + '\')';
+  //else
+  //  return this.modelType + ' ' + this.value;
 };
 /**
  * Methods
@@ -203,7 +212,17 @@ Attribute.prototype.get = function () {
   return this.value;
 };
 Attribute.prototype.set = function (newValue) {
-  this.value = newValue;
+  switch (this.type) {
+    case 'Model':
+      if (newValue instanceof Attribute.ModelID)
+        this.value = newValue;
+      else {
+        throw new Error('set error: value must be Attribute.ModelID');
+      }
+      break;
+    default:
+      this.value = newValue;
+  }
   this._emitEvent('StateChange');
   return this.value;
 };
@@ -1080,6 +1099,16 @@ Model.prototype.get = function (attribute) {
     if (this.attributes[i].name.toUpperCase() == attribute.toUpperCase())
       return this.attributes[i].get();
   }
+};
+Model.prototype.getShortName = function () {
+  for (var i = 0; i < this.attributes.length; i++) {
+    if (this.attributes[i].type == 'String')
+      return this.attributes[i].get();
+  }
+  return '';
+};
+Model.prototype.getLongName = function () {
+  return this.getShortName();
 };
 Model.prototype.getAttributeType = function (attribute) {
   for (var i = 0; i < this.attributes.length; i++) {
@@ -2337,7 +2366,9 @@ Session.prototype.startSession = function (store, userName, password, ip, callba
     // Got user create new session
     // TODO: Make this server side tied to yet to be designed store integrated authentication
     list.moveFirst();
-    self.set('userID', list.get('id'));
+    list.model.set('id', list.get('id')); // todo look how shitty List is designed - fix is to make moveFirst etc
+    list.model.set('name', list.get('name')); // todo (ctd) set model attribs from list or remove model from list
+    self.set('userID', new Attribute.ModelID(list.model));
     self.set('active', true);
     self.set('passCode', passCode);
     self.set('ipAddress', ip);
@@ -2788,7 +2819,7 @@ var cpad = function (expr, length, fillChar) {
 TGI.STORE = TGI.STORE || {};
 TGI.STORE.HOST = function () {
   return {
-    version: '0.0.?'
+    version: '0.0.9'
   };
 };
 
@@ -2806,8 +2837,12 @@ Transport.setMessageHandler('PutModel', function (messageContents, fn) {
     var a, attrib, v;
     for (a in messageContents.attributes) {
       if (messageContents.attributes[a].type == 'Model') {
+        //console.log('putting ' + messageContents.attributes[a]);
+        //console.log('json  ' + JSON.stringify(messageContents.attributes[a]));
         v = new Attribute.ModelID(createModelFromModelType(messageContents.attributes[a].modelType));
-        v.value = messageContents.attributes[a].value;
+        v.value = messageContents.attributes[a].value.value;
+        if (messageContents.attributes[a].value.name)
+          v.name = messageContents.attributes[a].value.name;
         attrib = new Attribute({name: messageContents.attributes[a].name, type: 'Model', value: v});
       } else {
         attrib = new Attribute(messageContents.attributes[a].name, messageContents.attributes[a].type);
