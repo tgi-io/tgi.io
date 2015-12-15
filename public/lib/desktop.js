@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.4.19',
+      version: '0.4.22',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -941,8 +941,13 @@ List.prototype.clear = function () {
 List.prototype.get = function (attribute) {
   if (this._items.length < 1) throw new Error('list is empty');
   for (var i = 0; i < this.model.attributes.length; i++) {
-    if (this.model.attributes[i].name.toUpperCase() == attribute.toUpperCase())
-      return this._items[this._itemIndex][i];
+    if (this.model.attributes[i].name.toUpperCase() == attribute.toUpperCase()) {
+      if (this.model.attributes[i].type == 'Date' && !(this._items[this._itemIndex][i] instanceof Date)) {
+        return new Date(this._items[this._itemIndex][i]); // todo problem with stores not keeping date type (mongo or host) kludge fix for now
+      } else {
+        return this._items[this._itemIndex][i];
+      }
+    }
   }
 };
 List.prototype.set = function (attribute, value) {
@@ -2819,7 +2824,7 @@ var cpad = function (expr, length, fillChar) {
 TGI.INTERFACE = TGI.INTERFACE || {};
 TGI.INTERFACE.BOOTSTRAP = function () {
   return {
-    version: '0.1.3',
+    version: '0.1.5',
     BootstrapInterface: BootstrapInterface
   };
 };
@@ -3570,10 +3575,24 @@ BootstrapInterface.prototype.renderPanelBody = function (panel, command) {
       for (j = 1; j < list.model.attributes.length; j++) { // skip id (0))
         var dAttribute = list.model.attributes[j];
         var dValue = list.get(dAttribute.name);
-        if (dValue.name) // todo instanceof Attribute.ModelID did not work so kludge here
-          addEle(tBodyRow, 'td').innerHTML = dValue.name;
-        else
-          addEle(tBodyRow, 'td').innerHTML = dValue;
+
+        switch (dAttribute.type) {
+          case 'Date':
+            addEle(tBodyRow, 'td').innerHTML = left(dValue.toISOString(), 10);
+            break;
+          case 'Boolean':
+            if (dValue)
+              addEle(tBodyRow, 'td').innerHTML = '<i class="fa fa-check-square-o"></i>';
+            else
+              addEle(tBodyRow, 'td').innerHTML = '<i class="fa fa-square-o"></i>';
+            break;
+          default:
+            if (dValue && dValue.name) // todo instanceof Attribute.ModelID did not work so kludge here
+              addEle(tBodyRow, 'td').innerHTML = dValue.name;
+            else
+              addEle(tBodyRow, 'td').innerHTML = dValue;
+        }
+
       }
       gotData = list.moveNext();
     }
