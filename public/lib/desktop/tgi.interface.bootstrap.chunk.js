@@ -4,7 +4,7 @@
 TGI.INTERFACE = TGI.INTERFACE || {};
 TGI.INTERFACE.BOOTSTRAP = function () {
   return {
-    version: '0.1.2',
+    version: '0.1.5',
     BootstrapInterface: BootstrapInterface
   };
 };
@@ -754,7 +754,25 @@ BootstrapInterface.prototype.renderPanelBody = function (panel, command) {
 
       for (j = 1; j < list.model.attributes.length; j++) { // skip id (0))
         var dAttribute = list.model.attributes[j];
-        addEle(tBodyRow, 'td').innerHTML = list.get(dAttribute.name);
+        var dValue = list.get(dAttribute.name);
+
+        switch (dAttribute.type) {
+          case 'Date':
+            addEle(tBodyRow, 'td').innerHTML = left(dValue.toISOString(), 10);
+            break;
+          case 'Boolean':
+            if (dValue)
+              addEle(tBodyRow, 'td').innerHTML = '<i class="fa fa-check-square-o"></i>';
+            else
+              addEle(tBodyRow, 'td').innerHTML = '<i class="fa fa-square-o"></i>';
+            break;
+          default:
+            if (dValue && dValue.name) // todo instanceof Attribute.ModelID did not work so kludge here
+              addEle(tBodyRow, 'td').innerHTML = dValue.name;
+            else
+              addEle(tBodyRow, 'td').innerHTML = dValue;
+        }
+
       }
       gotData = list.moveNext();
     }

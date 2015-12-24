@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.4.16',
+      version: '0.4.22',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -154,16 +154,15 @@ Attribute.ModelID = function (model) {
   if (false === (model instanceof Model)) throw new Error('must be constructed with Model');
   var shorty = model.getShortName();
   if (shorty)
-    this.value = [model.get('id'), shorty];
-  else
-    this.value = model.get('id');
+    this.name = shorty;
+  this.value = model.get('id');
   this.constructorFunction = model.constructor;
   this.modelType = model.modelType;
 };
 Attribute.ModelID.prototype.toString = function () {
 
-  if (this.value instanceof Array)
-    return this.modelType + ' ' + this.value[1];
+  if (this.name)
+    return this.modelType + ' ' + this.name;
   else
     return this.modelType + ' ' + this.value;
 
@@ -213,7 +212,17 @@ Attribute.prototype.get = function () {
   return this.value;
 };
 Attribute.prototype.set = function (newValue) {
-  this.value = newValue;
+  switch (this.type) {
+    case 'Model':
+      if (newValue instanceof Attribute.ModelID)
+        this.value = newValue;
+      else {
+        throw new Error('set error: value must be Attribute.ModelID');
+      }
+      break;
+    default:
+      this.value = newValue;
+  }
   this._emitEvent('StateChange');
   return this.value;
 };
@@ -932,8 +941,13 @@ List.prototype.clear = function () {
 List.prototype.get = function (attribute) {
   if (this._items.length < 1) throw new Error('list is empty');
   for (var i = 0; i < this.model.attributes.length; i++) {
-    if (this.model.attributes[i].name.toUpperCase() == attribute.toUpperCase())
-      return this._items[this._itemIndex][i];
+    if (this.model.attributes[i].name.toUpperCase() == attribute.toUpperCase()) {
+      if (this.model.attributes[i].type == 'Date' && !(this._items[this._itemIndex][i] instanceof Date)) {
+        return new Date(this._items[this._itemIndex][i]); // todo problem with stores not keeping date type (mongo or host) kludge fix for now
+      } else {
+        return this._items[this._itemIndex][i];
+      }
+    }
   }
 };
 List.prototype.set = function (attribute, value) {
@@ -2357,7 +2371,9 @@ Session.prototype.startSession = function (store, userName, password, ip, callba
     // Got user create new session
     // TODO: Make this server side tied to yet to be designed store integrated authentication
     list.moveFirst();
-    self.set('userID', list.get('id'));
+    list.model.set('id', list.get('id')); // todo look how shitty List is designed - fix is to make moveFirst etc
+    list.model.set('name', list.get('name')); // todo (ctd) set model attribs from list or remove model from list
+    self.set('userID', new Attribute.ModelID(list.model));
     self.set('active', true);
     self.set('passCode', passCode);
     self.set('ipAddress', ip);
@@ -3717,7 +3733,7 @@ LocalStore.prototype._putStore = function () {
 TGI.STORE = TGI.STORE || {};
 TGI.STORE.REMOTE = function () {
   return {
-    version: '0.0.3',
+    version: '0.0.9',
     RemoteStore: RemoteStore
   };
 };
@@ -3821,26 +3837,50 @@ RemoteStore.prototype.putModel = function (model, callback) {
     if (false && msg == 'Ack') { // todo wtf is this
       callback(model);
     } else if (msg.type == 'PutModelAck') {
-      var c = msg.contents;
-      /*** TODO: update values from host ...
+      var contents = msg.contents;
+      //for (var b in model.attributes) {
+      //  if (model.attributes[b].type == 'Model') {
+      //    console.log('value before ' + JSON.stringify(model.attributes[b].value));
+      //  }
+      //}
       model.attributes = [];
-      for (var a in c.attributes) {
-        if (c.attributes.hasOwnProperty(a)) {
+      for (var a in contents.attributes) {
+        if (contents.attributes.hasOwnProperty(a)) {
           var attrib;
-          //if (c.attributes[a].type=='Model') {
-          //  var v = new Attribute.ModelID(new Model());
-          //  v.value = c.attributes[a].value;
-          //  attrib = new Attribute({name:c.attributes[a].name, type:'Model',value:v});
-          //} else {
-            attrib = new Attribute(c.attributes[a].name, c.attributes[a].type);
-            attrib.value = c.attributes[a].value;
-          //}
+          if (contents.attributes[a].type == 'Model') {
+
+            var sourceModel = createModelFromModelType(contents.attributes[a].modelType);
+            var modelID = new Attribute.ModelID(sourceModel);
+
+            modelID.value = contents.attributes[a].value.value;
+            if (contents.attributes[a].value.name)
+              modelID.name = contents.attributes[a].value.name;
+
+
+
+            //  var v = new Attribute.ModelID(new Model());
+            //  v.value = c.attributes[a].value;
+            //  attrib = new Attribute({name:c.attributes[a].name, type:'Model',value:v});
+
+            attrib = new Attribute({name: contents.attributes[a].name, type: contents.attributes[a].type, value: modelID});
+
+            //attrib = new Attribute(c.attributes[a].name, c.attributes[a].type);
+            //attrib.value = c.attributes[a].value;
+
+            //console.log('modelID ' + JSON.stringify(modelID));
+            //console.log('contents    ' + JSON.stringify(contents.attributes[a].value));
+            //console.log('value after ' + JSON.stringify(attrib.value));
+
+          } else {
+            attrib = new Attribute(contents.attributes[a].name, contents.attributes[a].type);
+            attrib.value = contents.attributes[a].value;
+          }
           model.attributes.push(attrib);
         }
       }
-      */
-      if (typeof c == 'string')
-        callback(model, c);
+
+      if (typeof contents == 'string')
+        callback(model, contents);
       else
         callback(model);
     } else {
@@ -3892,8 +3932,8 @@ RemoteStore.prototype.getList = function (list, filter, arg3, arg4) {
       //console.log('before ' + i + ':' + filter[i] + '');
       if (filter[i] instanceof RegExp) {
         filter[i] = filter[i].toString();
-        filter[i] = left(filter[i],filter[i].length-1);
-        filter[i] = right(filter[i],filter[i].length-1);
+        filter[i] = left(filter[i], filter[i].length - 1);
+        filter[i] = right(filter[i], filter[i].length - 1);
         filter[i] = 'RegExp:' + filter[i];
       }
       //console.log('after ' + i + ':' + filter[i] + '');
