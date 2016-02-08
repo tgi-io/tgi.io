@@ -2938,11 +2938,11 @@ Transport.setMessageHandler('GetList', function (messageContents, fn) {
   var filter = messageContents.filter;
   for (var i in filter)
     if (filter.hasOwnProperty(i)) {
-      //console.log('before ' + i + ':' + filter[i] + '');
+      console.log('GetList Handler: before ' + i + ':' + filter[i] + '');
       if (typeof filter[i] == 'string' && left(filter[i], 7) == 'RegExp:') {
-        filter[i] = new RegExp(right(filter[i], (filter[i].length) - 7));
+        filter[i] = new RegExp(right(filter[i], (filter[i].length) - 7),'i'); // todo instead of hard coding ignore case preserve original regexp correctly
       }
-      //console.log('after ' + i + ':' + filter[i] + '');
+      console.log('GetList Handler: after ' + i + ':' + filter[i] + '');
     }
   var proxyList = new List(new Model());
   proxyList.model.modelType = messageContents.list.model.modelType;

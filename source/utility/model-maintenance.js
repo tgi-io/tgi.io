@@ -62,6 +62,10 @@ site.ModelMaintenance.prototype.preRenderCallback = function (command, callback)
         icon: 'fa-search',
         type: 'Function',
         contents: function () {
+          for (var i = 1; i < self.model.attributes.length; i++) { // copy all attribs except id
+            var attribute = self.model.attributes[i];
+            console.log('<< ' + attribute.name + ': ' + attribute.value + ' >>');
+          }
           self.viewState = 'LIST';
           command.execute(designToDo_ui);
         }
@@ -89,6 +93,7 @@ site.ModelMaintenance.prototype.preRenderCallback = function (command, callback)
     //self.contents.push('### list');
     try {
       var list = new tgi.List(self.model);
+      //site.hostStore.getList(list, {name: /^X/i}, {}, function (list, error) {
       site.hostStore.getList(list, {}, {}, function (list, error) {
         if (typeof error != 'undefined') {
           self.contents.push('#### ' + e);
