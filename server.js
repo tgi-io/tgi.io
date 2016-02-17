@@ -17,6 +17,7 @@ app.use(serveStatic('public'));
 //app.use(serveIndex('public', {icons: true}));
 app.use(serveStatic('source'));
 //app.use(serveIndex('source', {icons: true}));
+app.use(serveStatic('import'));
 app.use(errorHandler({dumpExceptions: true, showStack: true}));
 
 app.use(function (req, res, next) { // 404 equiv
