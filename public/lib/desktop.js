@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.4.25',
+      version: '0.4.43',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -30,6 +30,7 @@ var TGI = {
       Text: Text,
       Transport: Transport,
       User: User,
+      View: View,
       Workspace: Workspace,
       inheritPrototype: inheritPrototype,
       getInvalidProperties: getInvalidProperties,
@@ -79,9 +80,11 @@ function Attribute(args, arg2) {
   }(this.type);
   this.type = splitTypes[0];
   this.hint = args.hint || {};
+  if (args.hidden !== undefined)
+    this.hidden = args.hidden;
   this.validationRule = args.validationRule || {};
   var unusedProperties = [];
-  var standardProperties = ['name', 'type', 'label', 'hint', 'value', 'validationRule'];
+  var standardProperties = ['name', 'type', 'label', 'hint', 'hidden', 'value', 'validationRule'];
   switch (this.type) {
     case 'ID':
       unusedProperties = getInvalidProperties(args, standardProperties);
@@ -175,7 +178,7 @@ Attribute.ModelID.prototype.toString = function () {
  * Methods
  */
 Attribute.prototype.toString = function () {
-  return this.name === null ? 'new Attribute' : 'Attribute: ' + this.name;
+  return this.name === null ? 'new Attribute' : 'Attribute: ' + this.name + ' = ' + this.value;
 };
 Attribute.prototype.onEvent = function (events, callback) {
   if (!(events instanceof Array)) {
@@ -415,8 +418,10 @@ Attribute.getEvents = function () {
 function Command(args) {
   if (false === (this instanceof Command)) throw new Error('new operator required');
   if (typeof args == 'function') { // shorthand for function command
-    var theFunc = args;
-    args = {type: 'Function', contents: theFunc};
+    args = {type: 'Function', contents: args};
+  }
+  if (args instanceof Procedure) { // shorthand for Procedure command
+    args = {type: 'Procedure', contents: args};
   }
   args = args || {};
   var i;
@@ -923,10 +928,17 @@ Interface.firstMatch = function (s, a) { // find first partial match with s in a
  * tgi-core/lib/tgi-core-list.source.js
  */
 // Constructor
-var List = function (model) {
+var List = function (source) {
   if (false === (this instanceof List)) throw new Error('new operator required');
-  if (false === (model instanceof Model)) throw new Error('argument required: model');
-  this.model = model; // todo make unit test for this
+  if (source instanceof Model) {
+    this.model = source;
+  } else if (source instanceof View) {
+    this.view = source;
+    this.model = this.view.primaryModel;
+  } else {
+    throw new Error('argument required: model');
+  }
+  this.attributes = source.attributes;
   this._items = [];
   this._itemIndex = -1;
 };
@@ -940,10 +952,25 @@ List.prototype.clear = function () {
 };
 List.prototype.get = function (attribute) {
   if (this._items.length < 1) throw new Error('list is empty');
-  for (var i = 0; i < this.model.attributes.length; i++) {
-    if (this.model.attributes[i].name.toUpperCase() == attribute.toUpperCase()) {
-      if (this.model.attributes[i].type == 'Date' && !(this._items[this._itemIndex][i] instanceof Date)) {
-        return new Date(this._items[this._itemIndex][i]); // todo problem with stores not keeping date type (mongo or host) kludge fix for now
+  for (var i = 0; i < this.attributes.length; i++) {
+    var curName = this.attributes[i].name.toUpperCase();
+    var wantedName = attribute.toUpperCase();
+    var splitName = wantedName.split('.');
+    //console.log('curName : ' + curName);
+    //console.log('wantedName : ' + wantedName + ' size ' + splitName.length);
+    var matches = (curName == wantedName);
+    if (splitName.length == 2) {
+      wantedName = splitName[1];
+      var wantedModel = splitName[0];
+      var curModel = this.attributes[i].model.modelType.toUpperCase();
+      matches = (curName == wantedName) && (wantedModel==curModel);
+    }
+    if (matches) {
+      if (this.attributes[i].type == 'Date' && !(this._items[this._itemIndex][i] instanceof Date)) {
+        if (this._items[this._itemIndex][i] === null || this._items[this._itemIndex][i] === undefined)
+          return null;
+        else
+          return new Date(this._items[this._itemIndex][i]); // todo problem with stores not keeping date type (mongo or host) kludge fix for now
       } else {
         return this._items[this._itemIndex][i];
       }
@@ -952,8 +979,21 @@ List.prototype.get = function (attribute) {
 };
 List.prototype.set = function (attribute, value) {
   if (this._items.length < 1) throw new Error('list is empty');
-  for (var i = 0; i < this.model.attributes.length; i++) {
-    if (this.model.attributes[i].name.toUpperCase() == attribute.toUpperCase()) {
+  for (var i = 0; i < this.attributes.length; i++) {
+    var curName = this.attributes[i].name.toUpperCase();
+    var wantedName = attribute.toUpperCase();
+    var splitName = wantedName.split('.');
+    //console.log('curName : ' + curName);
+    //console.log('wantedName : ' + wantedName + ' size ' + splitName.length);
+    var matches = (curName == wantedName);
+    if (splitName.length == 2) {
+      wantedName = splitName[1];
+      var wantedModel = splitName[0];
+      var curModel = this.attributes[i].model.modelType.toUpperCase();
+      matches = (curName == wantedName) && (wantedModel==curModel);
+    }
+    if (matches) {
+
       this._items[this._itemIndex][i] = value;
       return;
     }
@@ -968,7 +1008,7 @@ List.prototype.addItem = function (item) {
       values.push(item.attributes[i].value);
     }
   } else {
-    for (i in this.model.attributes) {
+    for (i in this.attributes) {
       values.push(undefined);
     }
   }
@@ -1021,7 +1061,7 @@ List.prototype.sort = function (key) {
   }
   if (!keyvalue) throw new Error('sort order required');
   var ascendingSort = (key[keyvalue] == 1);
-  while (i < this.model.attributes.length && this.model.attributes[i].name != keyvalue) i++;
+  while (i < this.attributes.length && this.attributes[i].name != keyvalue) i++;
   this._items.sort(function (a, b) {
     if (ascendingSort) {
       if (a[i] < b[i])
@@ -1039,6 +1079,51 @@ List.prototype.sort = function (key) {
 };
 
 /**---------------------------------------------------------------------------------------------------------------------
+ * tgi-core/lib/core/tgi-core-message.source.js
+ */
+/**
+ * Constructor
+ */
+function Message(type, contents) {
+  if (false === (this instanceof Message)) throw new Error('new operator required');
+  if ('undefined' == typeof type) throw new Error('message type required');
+  if (!contains(Message.getTypes(), type)) throw new Error('Invalid message type: ' + type);
+  this.type = type;
+  this.contents = contents;
+}
+/**
+ * Methods
+ */
+Message.prototype.toString = function () {
+  switch (this.type) {
+    case 'Null':
+      return this.type + ' Message';
+    default:
+      return this.type + ' Message: ' + this.contents;
+  }
+};
+/**
+ * Simple functions
+ */
+Message.getTypes = function () {
+  return [
+    'Null',
+    'Connected',
+    'Error',
+    'Sent',
+    'Ping',
+    'PutModel',
+    'PutModelAck',
+    'GetModel',
+    'GetModelAck',
+    'DeleteModel',
+    'DeleteModelAck',
+    'GetList',
+    'GetListAck'
+  ].slice(0); // copy array
+};
+
+/**---------------------------------------------------------------------------------------------------------------------
  * tgi-core/lib/tgi-core-model.source.js
  */
 /**
@@ -1047,16 +1132,16 @@ List.prototype.sort = function (key) {
 var Model = function (args) {
   var i;
   if (false === (this instanceof Model)) throw new Error('new operator required');
-  this.modelType = "Model";
   this.attributes = [new Attribute('id', 'ID')];
   args = args || {};
+  this.modelType = args.modelType || "Model";
   if (args.attributes) {
     for (i in args.attributes) {
       if (args.attributes.hasOwnProperty(i))
         this.attributes.push(args.attributes[i]);
     }
   }
-  var unusedProperties = getInvalidProperties(args, ['attributes']);
+  var unusedProperties = getInvalidProperties(args, ['modelType', 'attributes']);
   var errorList = this.getObjectStateErrors(); // before leaving make sure valid Model
   for (i = 0; i < unusedProperties.length; i++) errorList.push('invalid property: ' + unusedProperties[i]);
   if (errorList.length > 1) throw new Error('error creating Model: multiple errors');
@@ -1064,6 +1149,9 @@ var Model = function (args) {
   // Validations done
   this._eventListeners = [];
   this._errorConditions = {};
+  //for (i = 0; i < this.attributes.length; i++) {
+  //  this.attributes[i].model = this;
+  //}
 };
 Model._ModelConstructor = {};
 /**
@@ -1098,6 +1186,13 @@ Model.prototype.getObjectStateErrors = function () {
     this.validationErrors.push('tags must be Array or null');
   }
   return this.validationErrors;
+};
+Model.prototype.attribute = function (attributeName) {
+  for (var i = 0; i < this.attributes.length; i++) {
+    if (this.attributes[i].name.toUpperCase() == attributeName.toUpperCase())
+      return this.attributes[i];
+  }
+  throw new Error('attribute not found in model: ' + attributeName);
 };
 Model.prototype.get = function (attribute) {
   for (var i = 0; i < this.attributes.length; i++) {
@@ -1225,51 +1320,6 @@ Model.prototype.clearError = function (condition) {
   delete this._errorConditions[condition];
 };
 /**---------------------------------------------------------------------------------------------------------------------
- * tgi-core/lib/core/tgi-core-message.source.js
- */
-/**
- * Constructor
- */
-function Message(type, contents) {
-  if (false === (this instanceof Message)) throw new Error('new operator required');
-  if ('undefined' == typeof type) throw new Error('message type required');
-  if (!contains(Message.getTypes(), type)) throw new Error('Invalid message type: ' + type);
-  this.type = type;
-  this.contents = contents;
-}
-/**
- * Methods
- */
-Message.prototype.toString = function () {
-  switch (this.type) {
-    case 'Null':
-      return this.type + ' Message';
-    default:
-      return this.type + ' Message: ' + this.contents;
-  }
-};
-/**
- * Simple functions
- */
-Message.getTypes = function () {
-  return [
-    'Null',
-    'Connected',
-    'Error',
-    'Sent',
-    'Ping',
-    'PutModel',
-    'PutModelAck',
-    'GetModel',
-    'GetModelAck',
-    'DeleteModel',
-    'DeleteModelAck',
-    'GetList',
-    'GetListAck'
-  ].slice(0); // copy array
-};
-
-/**---------------------------------------------------------------------------------------------------------------------
  * tgi-core/lib/core/tgi-core-procedure.source.js
  */
 /**
@@ -1277,6 +1327,9 @@ Message.getTypes = function () {
  */
 var Procedure = function (args) {
   if (false === (this instanceof Procedure)) throw new Error('new operator required');
+  if (args instanceof Array) { // shorthand for Procedure command
+    args = {tasks: args};
+  }
   args = args || {};
   var i;
   var unusedProperties = getInvalidProperties(args, ['tasks', 'tasksNeeded', 'tasksCompleted']);
@@ -1407,7 +1460,7 @@ Store.prototype.toString = function () {
   if (this.name == 'a ' + this.storeType) {
     return this.name;
   } else {
-    return this.storeType + ': ' +this.name;
+    return this.storeType + ': ' + this.name;
   }
 };
 Store.prototype.getServices = function () {
@@ -1430,6 +1483,103 @@ Store.prototype.deleteModel = function () {
 Store.prototype.getList = function () {
   throw new Error('Store does not provide getList');
 };
+Store.prototype.getViewList = function (viewList, filter, arg3, arg4) {
+  var store = this;
+  var callback, order, i;
+  if (typeof(arg4) == 'function') {
+    callback = arg4;
+    order = arg3;
+  } else {
+    callback = arg3;
+  }
+  if (!(viewList instanceof List)) throw new Error('argument must be a List');
+  if (!viewList.view) throw new Error('List is Model type use getList');
+  if (!(filter instanceof Object)) throw new Error('filter argument must be Object');
+  if (typeof callback != "function") throw new Error('callback required');
+
+  /**
+   * use getList to populate initial rows
+   */
+  var proxyList = new List(viewList.model);
+  if (order)
+    this.getList(proxyList, filter, order, gotProxyList);
+  else
+    this.getList(proxyList, filter, gotProxyList);
+
+  /**
+   * Process proxy list and populate list
+   */
+  function gotProxyList(list, error) {
+    /**
+     * clear target list and make sure no errors
+     */
+    viewList.clear();
+    if (typeof error != 'undefined') {
+      callback(viewList, error);
+      return;
+    }
+    /**
+     * Move through each row
+     */
+    var moreRows = proxyList.moveFirst();
+    var relatedModelNames = [];
+    processRow();
+
+    /**
+     * Process Row
+     */
+    function processRow() {
+      if (!moreRows) { // Are we done?
+        callback(viewList);
+        return;
+      }
+      viewList.addItem();
+
+      // Populate from primary row
+      for (i = 0; i < viewList.attributes.length; i++) {
+        var col = viewList.attributes[i];
+        if (col.model == viewList.model) {
+          viewList.set(col.name, proxyList.get(col.name));
+        }
+      }
+      relatedModelNames = [];
+      for (var relatedModel in viewList.view.relatedModels)
+        if (viewList.view.relatedModels.hasOwnProperty(relatedModel))
+          relatedModelNames.push(relatedModel);
+      getRelatedModel();
+    }
+
+    function getRelatedModel() {
+      if (!relatedModelNames.length) {
+        moreRows = proxyList.moveNext();
+        processRow();
+        return;
+      }
+      //console.log('*** GETTING relatedModelNames ***');
+
+      var foreignAttribute = relatedModelNames.shift();
+      var relatedModel = viewList.view.relatedModels[foreignAttribute];
+      var foreignID = proxyList.get(relatedModel.id.name);
+      relatedModel.model.set('id', foreignID);
+      store.getModel(relatedModel.model, function (model, error) {
+        if (typeof error != 'undefined') {
+          callback(error);
+          return;
+        }
+        // Populate from primary row
+        for (var i = 0; i < viewList.attributes.length; i++) {
+          var col = viewList.attributes[i];
+          if (col.model == model) {
+            //console.log('Setting col.name ' + col.name + ' ' + model.get(col.name));
+            viewList.set(model.modelType + '.' + col.name, model.get(col.name));
+          }
+        }
+        getRelatedModel();
+      });
+    }
+  }
+};
+
 
 /**---------------------------------------------------------------------------------------------------------------------
  * tgi-core/lib/core/tgi-core-text.source.js
@@ -1601,6 +1751,58 @@ Transport.prototype.close = function () {
   if (!this.connected)
     throw new Error('not connected');
   this.socket.disconnect();
+};
+
+/**---------------------------------------------------------------------------------------------------------------------
+ * tgi-core/lib/core/tgi-core-view.source.js
+ */
+/**
+ * Constructor
+ */
+function View(primaryModel, relatedModels, attributes) {
+  if (false === (this instanceof View)) throw new Error('new operator required');
+  if (!(primaryModel instanceof Model)) throw new Error('argument must be a Model');
+  if (typeof relatedModels != 'object') throw new Error('object expected');
+  if (!(attributes instanceof Array)) throw new Error('array of attributes expected');
+  this.primaryModel = primaryModel;
+  this.relatedModels = relatedModels;
+  this.attributes = attributes;
+  var id = new Attribute('id', 'ID');
+  id.model = primaryModel;
+  this.attributes.unshift(id);
+
+  /**
+   * Make sure relatedModels valid
+   */
+  for (var relatedModel in relatedModels) {
+    if (relatedModels.hasOwnProperty(relatedModel)) {
+      var obj = relatedModels[relatedModel];
+      //console.log('relatedModel ' + relatedModel);
+      //console.log('obj ' + JSON.stringify(obj));
+      if (typeof obj != 'object') throw new Error('relatedModel key values expect object');
+      if (obj.id === undefined) throw new Error('relatedModel key values expect object with id key');
+      if (obj.model === undefined) throw new Error('relatedModel key values expect object with model key');
+      if (!(obj.id instanceof Attribute)) throw new Error('relatedModel id must be a Attribute');
+      if (!(obj.model instanceof Model)) throw new Error('relatedModel model must be a Model');
+    }
+  }
+  /**
+   * Check attributes
+   */
+  for (var i = 0; i < attributes.length; i++) {
+    var attribute = attributes[i];
+    if (!(attribute instanceof Attribute)) throw new Error('attribute array must contain Attributes');
+    if (!(attribute.model instanceof Model)) {
+      throw new Error('attribute array must contain Attributes with model references');
+    }
+
+  }
+}
+/**
+ * Methods
+ */
+View.prototype.toString = function () {
+  return this.primaryModel + ' View';
 };
 
 /**---------------------------------------------------------------------------------------------------------------------
@@ -2627,6 +2829,7 @@ MemoryStore.prototype.getList = function (list, filter, arg3, arg4) {
     callback = arg3;
   }
   if (!(list instanceof List)) throw new Error('argument must be a List');
+  if (list.view) throw new Error('List is View type use getViewList');
   if (!(filter instanceof Object)) throw new Error('filter argument must be Object');
   if (typeof callback != "function") throw new Error('callback required');
   // Find model in memorystore, error out if can't find
@@ -2824,7 +3027,7 @@ var cpad = function (expr, length, fillChar) {
 TGI.INTERFACE = TGI.INTERFACE || {};
 TGI.INTERFACE.BOOTSTRAP = function () {
   return {
-    version: '0.1.5',
+    version: '0.1.22',
     BootstrapInterface: BootstrapInterface
   };
 };
@@ -2979,7 +3182,7 @@ BootstrapInterface.prototype.refreshNavigation = function () {
   var separatorSeen = false;
   for (var menuItem in menuContents) if (menuContents.hasOwnProperty(menuItem)) {
     if (menuContents[menuItem].type == 'Menu') {
-      var parentMenu = this.addNavBarListMenu(this.doc.navBarLeft, menuContents[menuItem].name);
+      var parentMenu = this.addNavBarListMenu(this.doc.navBarLeft, menuContents[menuItem]);
       var subMenu = menuContents[menuItem].contents;
       for (var subPres in subMenu)
         if (subMenu.hasOwnProperty(subPres))
@@ -3002,9 +3205,7 @@ BootstrapInterface.prototype.addNavigationItem = function (parent, action) {
       icon = '<i class="fa ' + action.icon + '"></i>&nbsp;';
     else
       icon = '<span class="glyphicon ' + action.icon + '"></span>&nbsp;';
-    //<a href="#"><span class="glyphicon glyphicon-chevron-down panel-glyph-left text-muted"></span></a>
   }
-  //listItem.innerHTML = '<a >' + icon + action.name + '</a>';
   listItem.innerHTML = '<button type="button" class="btn btn-' + theme + ' navbar-btn">' + icon + action.name + '</button>';
   $(listItem).click(function (e) {
     bootstrapInterface.dispatch(new Request({type: 'Command', command: action}));
@@ -3033,13 +3234,20 @@ BootstrapInterface.prototype.addNavBarListItem = function (parent, action, icon)
   listItem.innerHTML = html;
   parent.appendChild(listItem);
 };
-BootstrapInterface.prototype.addNavBarListMenu = function (parent, name) {
+BootstrapInterface.prototype.addNavBarListMenu = function (parent, action) {
+
+  var icon = '';
+  var theme = action.theme || 'default';
+  if (action.icon) {
+    if (left(action.icon,2) == 'fa')
+      icon = '<i class="fa ' + action.icon + '"></i>&nbsp;';
+    else
+      icon = '<span class="glyphicon ' + action.icon + '"></span>&nbsp;';
+  }
 
   var dropDown = document.createElement('li');
   dropDown.className = "dropdown";
-  //dropDown.innerHTML = '<a href="#" class="dropdown-toggle navbar-menu" data-toggle="dropdown">' + name + '<b class="caret"></b></a>';
-  dropDown.innerHTML = '<button type="button" class="dropdown-toggle btn btn-default navbar-btn" data-toggle="dropdown">' + name + '&nbsp;<b class="caret"></b></button>';
-  // listItem.innerHTML = '<button type="button" class="btn btn-default navbar-btn">' + action.name + '</button>';
+  dropDown.innerHTML = '<button type="button" class="dropdown-toggle btn btn-' + theme + ' navbar-btn" data-toggle="dropdown">' + icon + action.name + '&nbsp;<b class="caret"></b></button>';
   parent.appendChild(dropDown);
 
   var dropDownMenu = document.createElement('ul');
@@ -3124,7 +3332,7 @@ BootstrapInterface.prototype.activatePanel = function (command) {
     /**
      * Main framing and title text
      */
-    panel.panelDiv = addTopEle(this.doc.panelRow, 'div', 'panel panel-' + theme, {draggable: 'true'});
+    panel.panelDiv = addTopEle(this.doc.panelRow, 'div', 'panel panel-' + theme);
     panel.panelHeading = addEle(panel.panelDiv, 'div', 'panel-heading');
     panel.panelTitle = addEle(panel.panelHeading, 'div', 'panel-title');
     panel.panelTitleText = addEle(panel.panelTitle, 'a', 'panel-title-text', {href: '#'});
@@ -3432,6 +3640,7 @@ BootstrapInterface.prototype.renderPanelBody = function (panel, command) {
 
       case 'ViewDate':
         input = addEle(inputDiv, 'p', 'form-control-static');
+        console.log('ViewDate: ' + JSON.stringify(attribute));
         if (attribute.value)
           input.innerHTML = (1 + attribute.value.getMonth()) + '/' + attribute.value.getDate() + '/' + attribute.value.getFullYear();
 
@@ -3450,6 +3659,7 @@ BootstrapInterface.prototype.renderPanelBody = function (panel, command) {
       switch (attribute.type) {
         case 'Date':
           attribute.value = (input.value === '') ? null : attribute.coerce(input.value);
+          console.log('validateInput ' + attribute);
           if (attribute.value != null) {
             var mm = attribute.value.getMonth() + 1;
             var dd = attribute.value.getDate();
@@ -3485,7 +3695,7 @@ BootstrapInterface.prototype.renderPanelBody = function (panel, command) {
     attribute.onEvent('StateChange', function () {
       switch (mode + attribute.type) {
         case 'EditBoolean':
-          if (attribute.value != input.checked)
+          if (( attribute.value ? true : false ) != input.checked)
             $(input).click();
           break;
         case 'EditDate':
@@ -3554,7 +3764,8 @@ BootstrapInterface.prototype.renderPanelBody = function (panel, command) {
     var tHeadRow = addEle(tHead, 'tr');
     for (j = 1; j < list.model.attributes.length; j++) { // skip id (0))
       var hAttribute = list.model.attributes[j];
-      addEle(tHeadRow, 'th').innerHTML = hAttribute.label;
+      if (hAttribute.hidden == undefined)
+        addEle(tHeadRow, 'th').innerHTML = hAttribute.label;
     }
 
     /**
@@ -3576,25 +3787,31 @@ BootstrapInterface.prototype.renderPanelBody = function (panel, command) {
 
       for (j = 1; j < list.model.attributes.length; j++) { // skip id (0))
         var dAttribute = list.model.attributes[j];
-        var dValue = list.get(dAttribute.name);
-
-        switch (dAttribute.type) {
-          case 'Date':
-            addEle(tBodyRow, 'td').innerHTML = left(dValue.toISOString(), 10);
-            break;
-          case 'Boolean':
-            if (dValue)
-              addEle(tBodyRow, 'td').innerHTML = '<i class="fa fa-check-square-o"></i>';
-            else
-              addEle(tBodyRow, 'td').innerHTML = '<i class="fa fa-square-o"></i>';
-            break;
-          default:
-            if (dValue && dValue.name) // todo instanceof Attribute.ModelID did not work so kludge here
-              addEle(tBodyRow, 'td').innerHTML = dValue.name;
-            else
-              addEle(tBodyRow, 'td').innerHTML = dValue;
+        if (dAttribute.hidden == undefined) {
+          var dValue = list.get(dAttribute.name);
+          switch (dAttribute.type) {
+            case 'Date':
+              //console.log('dValue=' + dValue);
+              // addEle(tBodyRow, 'td').innerHTML = left(dValue.toISOString(), 10);
+              // addEle(tBodyRow, 'td').innerHTML = dValue.toString(); // todo use moment.js
+              if (dValue)
+                addEle(tBodyRow, 'td').innerHTML = left(dValue.toISOString(), 10);
+              else
+                addEle(tBodyRow, 'td').innerHTML = '&nbsp;';
+              break;
+            case 'Boolean':
+              if (dValue)
+                addEle(tBodyRow, 'td').innerHTML = '<i class="fa fa-check-square-o"></i>';
+              else
+                addEle(tBodyRow, 'td').innerHTML = '<i class="fa fa-square-o"></i>';
+              break;
+            default:
+              if (dValue && dValue.name) // todo instanceof Attribute.ModelID did not work so kludge here
+                addEle(tBodyRow, 'td').innerHTML = dValue.name;
+              else
+                addEle(tBodyRow, 'td').innerHTML = dValue;
+          }
         }
-
       }
       gotData = list.moveNext();
     }
@@ -3809,6 +4026,84 @@ BootstrapInterface.prototype.htmlDialog = function () {
   choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
   $(choice).on('click', function () {
     bootstrapInterface.doc.chooseDialogChoice = 7;
+    $(bootstrapInterface.doc.chooseDialog).modal('hide');
+  });
+  this.doc.chooseDialogButtons.push(choice);
+  choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
+  $(choice).on('click', function () {
+    bootstrapInterface.doc.chooseDialogChoice = 8;
+    $(bootstrapInterface.doc.chooseDialog).modal('hide');
+  });
+  this.doc.chooseDialogButtons.push(choice);
+  choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
+  $(choice).on('click', function () {
+    bootstrapInterface.doc.chooseDialogChoice = 9;
+    $(bootstrapInterface.doc.chooseDialog).modal('hide');
+  });
+  this.doc.chooseDialogButtons.push(choice);
+  choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
+  $(choice).on('click', function () {
+    bootstrapInterface.doc.chooseDialogChoice = 10;
+    $(bootstrapInterface.doc.chooseDialog).modal('hide');
+  });
+  this.doc.chooseDialogButtons.push(choice);
+  choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
+  $(choice).on('click', function () {
+    bootstrapInterface.doc.chooseDialogChoice = 11;
+    $(bootstrapInterface.doc.chooseDialog).modal('hide');
+  });
+  this.doc.chooseDialogButtons.push(choice);
+  choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
+  $(choice).on('click', function () {
+    bootstrapInterface.doc.chooseDialogChoice = 12;
+    $(bootstrapInterface.doc.chooseDialog).modal('hide');
+  });
+  this.doc.chooseDialogButtons.push(choice);
+  choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
+  $(choice).on('click', function () {
+    bootstrapInterface.doc.chooseDialogChoice = 13;
+    $(bootstrapInterface.doc.chooseDialog).modal('hide');
+  });
+  this.doc.chooseDialogButtons.push(choice);
+  choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
+  $(choice).on('click', function () {
+    bootstrapInterface.doc.chooseDialogChoice = 14;
+    $(bootstrapInterface.doc.chooseDialog).modal('hide');
+  });
+  this.doc.chooseDialogButtons.push(choice);
+  choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
+  $(choice).on('click', function () {
+    bootstrapInterface.doc.chooseDialogChoice = 15;
+    $(bootstrapInterface.doc.chooseDialog).modal('hide');
+  });
+  this.doc.chooseDialogButtons.push(choice);
+  choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
+  $(choice).on('click', function () {
+    bootstrapInterface.doc.chooseDialogChoice = 16;
+    $(bootstrapInterface.doc.chooseDialog).modal('hide');
+  });
+  this.doc.chooseDialogButtons.push(choice);
+  choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
+  $(choice).on('click', function () {
+    bootstrapInterface.doc.chooseDialogChoice = 17;
+    $(bootstrapInterface.doc.chooseDialog).modal('hide');
+  });
+  this.doc.chooseDialogButtons.push(choice);
+  choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
+  $(choice).on('click', function () {
+    bootstrapInterface.doc.chooseDialogChoice = 18;
+    $(bootstrapInterface.doc.chooseDialog).modal('hide');
+  });
+  this.doc.chooseDialogButtons.push(choice);
+  choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
+  $(choice).on('click', function () {
+    bootstrapInterface.doc.chooseDialogChoice = 19;
+    $(bootstrapInterface.doc.chooseDialog).modal('hide');
+  });
+  this.doc.chooseDialogButtons.push(choice);
+  choice = addEle(modalBody, 'button', 'btn btn-default btn-block');
+  $(choice).on('click', function () {
+    bootstrapInterface.doc.chooseDialogChoice = 20;
     $(bootstrapInterface.doc.chooseDialog).modal('hide');
   });
   this.doc.chooseDialogButtons.push(choice);
@@ -4115,6 +4410,7 @@ BootstrapInterface.prototype.ask = function (prompt, attribute, callback) {
   } else {
     this.doc.askDialogTitle.innerHTML = this.application.get('brand');
     this.doc.askDialogPrompt.innerHTML = prompt + '<br><br>';
+    this.doc.askDialogInput.value = attribute.value;
     $(this.doc.askDialog).modal();
     this.askcallback = callback;
   }
@@ -4423,7 +4719,7 @@ LocalStore.prototype._putStore = function () {
 TGI.STORE = TGI.STORE || {};
 TGI.STORE.REMOTE = function () {
   return {
-    version: '0.0.9',
+    version: '0.0.26',
     RemoteStore: RemoteStore
   };
 };
@@ -4463,6 +4759,39 @@ var RemoteStore = function (args) {
 };
 RemoteStore.prototype = Object.create(Store.prototype);
 /**
+ * Helper function
+ */
+RemoteStore.stripModel = function (model) {
+  //console.log('STRIP: ' + model);
+  var newModel = {};
+  for (var m in model) {
+    if (model.hasOwnProperty(m)) {
+      if (m == 'modelType') {
+        newModel[m] = model[m];
+        //console.log('m ' + m);
+      }
+      else if (m == 'attributes') {
+        var attributes = model[m];
+        var newAttributes = [];
+        for (var a in attributes) {
+          if (attributes.hasOwnProperty(a)) {
+            var attribute = attributes[a];
+            var newAttribute = {};
+            newAttribute.name = attribute.name;
+            newAttribute.type = attribute.type;
+            newAttribute.value = attribute.value;
+            newAttributes.push(newAttribute);
+          }
+        }
+        newModel[m] = newAttributes;
+        //console.log('newAttributes ' + newAttributes);
+      }
+    }
+  }
+  return newModel;
+};
+
+/**
  * Methods
  */
 RemoteStore.prototype.onConnect = function (location, callback, options) {
@@ -4496,19 +4825,38 @@ RemoteStore.prototype.getModel = function (model, callback) {
   if (model.getObjectStateErrors().length) throw new Error('model has validation errors');
   if (!model.attributes[0].value) throw new Error('ID not set');
   if (typeof callback != "function") throw new Error('callback required');
-  this.transport.send(new Message('GetModel', model), function (msg) {
-    //console.log('GetModel callback');
-    if (false && msg == 'Ack') { // todo wtf is this
-      callback(model);
-    } else if (msg.type == 'GetModelAck') {
-      var c = msg.contents;
-      model.attributes = [];
-      for (var a in c.attributes) {
-        if (c.attributes.hasOwnProperty(a)) {
-          var attrib = new Attribute(c.attributes[a].name, c.attributes[a].type);
-          attrib.value = c.attributes[a].value;
-          model.attributes.push(attrib);
+  this.transport.send(new Message('GetModel', RemoteStore.stripModel(model)), function (msg) {
+    if (msg.type == 'GetModelAck') {
+      if (typeof msg.contents == 'string') {
+        callback(model, msg.contents);
+        return;
+      }
+      var newAttributes = msg.contents.attributes;
+      for (var i = 0; i < model.attributes.length; i++) {
+        var attribute = model.attributes[i];
+        var name = model.attributes[i].name;
+        var gotOne = false;
+        for (var j = 0; j < newAttributes.length; j++) {
+          var newAttribute = newAttributes[j];
+          var name2 = newAttribute.name;
+          if (name2 == name) {
+            if (newAttribute.value === undefined || newAttribute.value === null) {
+              attribute.value = null;
+            } else if (attribute.type == 'Date') {
+              try {
+                attribute.value = new Date(newAttribute.value);
+              } catch (e) {
+                attribute.value = null;
+              }
+            } else {
+              attribute.value = newAttribute.value;
+            }
+            gotOne = true;
+          }
+          if (!gotOne)
+            attribute.value = null;
         }
+        //console.log('!!! GetModel attribute: ' + attribute);
       }
       if (typeof c == 'string')
         callback(model, c);
@@ -4523,7 +4871,7 @@ RemoteStore.prototype.putModel = function (model, callback) {
   if (!(model instanceof Model)) throw new Error('argument must be a Model');
   if (model.getObjectStateErrors().length) throw new Error('model has validation errors');
   if (typeof callback != "function") throw new Error('callback required');
-  this.transport.send(new Message('PutModel', model), function (msg) {
+  this.transport.send(new Message('PutModel', RemoteStore.stripModel(model)), function (msg) {
     if (false && msg == 'Ack') { // todo wtf is this
       callback(model);
     } else if (msg.type == 'PutModelAck') {
@@ -4547,12 +4895,15 @@ RemoteStore.prototype.putModel = function (model, callback) {
               modelID.name = contents.attributes[a].value.name;
 
 
-
             //  var v = new Attribute.ModelID(new Model());
             //  v.value = c.attributes[a].value;
             //  attrib = new Attribute({name:c.attributes[a].name, type:'Model',value:v});
 
-            attrib = new Attribute({name: contents.attributes[a].name, type: contents.attributes[a].type, value: modelID});
+            attrib = new Attribute({
+              name: contents.attributes[a].name,
+              type: contents.attributes[a].type,
+              value: modelID
+            });
 
             //attrib = new Attribute(c.attributes[a].name, c.attributes[a].type);
             //attrib.value = c.attributes[a].value;
@@ -4583,7 +4934,7 @@ RemoteStore.prototype.deleteModel = function (model, callback) {
   if (!(model instanceof Model)) throw new Error('argument must be a Model');
   if (model.getObjectStateErrors().length) throw new Error('model has validation errors');
   if (typeof callback != "function") throw new Error('callback required');
-  this.transport.send(new Message('DeleteModel', model), function (msg) {
+  this.transport.send(new Message('DeleteModel', RemoteStore.stripModel(model)), function (msg) {
     //console.log('DeleteModel callback');
     if (false && msg == 'Ack') { // todo wtf is this
       callback(model);
@@ -4619,19 +4970,27 @@ RemoteStore.prototype.getList = function (list, filter, arg3, arg4) {
   if (typeof callback != "function") throw new Error('callback required');
   for (var i in filter)
     if (filter.hasOwnProperty(i)) {
-      console.log('RemoteStore: before ' + i + ':' + filter[i] + '');
+      //console.log('RemoteStore: before ' + i + ':' + filter[i] + '');
       if (filter[i] instanceof RegExp) {
         filter[i] = filter[i].source;
         filter[i] = 'RegExp:' + filter[i];
       }
-      console.log('RemoteStore: after ' + i + ':' + filter[i] + '');
+      //console.log('RemoteStore: after ' + i + ':' + filter[i] + '');
     }
-  this.transport.send(new Message('GetList', {list: list, filter: filter, order: order}), function (msg) {
+  var newList = {};
+  var strippedModel = RemoteStore.stripModel(list.model);
+  newList._itemIndex = list._itemIndex;
+  newList._items = list._items;
+  newList.model = strippedModel;
+  newList.attributes = strippedModel.attributes;
+  this.transport.send(new Message('GetList', {list: newList, filter: filter, order: order}), function (msg) {
     if (false && msg == 'Ack') { // todo wtf is this
       callback(list);
     } else if (msg.type == 'GetListAck') {
       list._items = msg.contents._items;
       list._itemIndex = msg.contents._itemIndex;
+      //console.log('GetListAck..............');
+      //console.log(JSON.stringify(list));
       callback(list);
     } else {
       callback(list, Error(msg));

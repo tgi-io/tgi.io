@@ -10,7 +10,7 @@ var root = this;
 var TGI = {
   CORE: function () {
     return {
-      version: '0.4.25',
+      version: '0.4.43',
       Application: Application,
       Attribute: Attribute,
       Command: Command,
@@ -30,6 +30,7 @@ var TGI = {
       Text: Text,
       Transport: Transport,
       User: User,
+      View: View,
       Workspace: Workspace,
       inheritPrototype: inheritPrototype,
       getInvalidProperties: getInvalidProperties,
@@ -79,9 +80,11 @@ function Attribute(args, arg2) {
   }(this.type);
   this.type = splitTypes[0];
   this.hint = args.hint || {};
+  if (args.hidden !== undefined)
+    this.hidden = args.hidden;
   this.validationRule = args.validationRule || {};
   var unusedProperties = [];
-  var standardProperties = ['name', 'type', 'label', 'hint', 'value', 'validationRule'];
+  var standardProperties = ['name', 'type', 'label', 'hint', 'hidden', 'value', 'validationRule'];
   switch (this.type) {
     case 'ID':
       unusedProperties = getInvalidProperties(args, standardProperties);
@@ -175,7 +178,7 @@ Attribute.ModelID.prototype.toString = function () {
  * Methods
  */
 Attribute.prototype.toString = function () {
-  return this.name === null ? 'new Attribute' : 'Attribute: ' + this.name;
+  return this.name === null ? 'new Attribute' : 'Attribute: ' + this.name + ' = ' + this.value;
 };
 Attribute.prototype.onEvent = function (events, callback) {
   if (!(events instanceof Array)) {
@@ -415,8 +418,10 @@ Attribute.getEvents = function () {
 function Command(args) {
   if (false === (this instanceof Command)) throw new Error('new operator required');
   if (typeof args == 'function') { // shorthand for function command
-    var theFunc = args;
-    args = {type: 'Function', contents: theFunc};
+    args = {type: 'Function', contents: args};
+  }
+  if (args instanceof Procedure) { // shorthand for Procedure command
+    args = {type: 'Procedure', contents: args};
   }
   args = args || {};
   var i;
@@ -923,10 +928,17 @@ Interface.firstMatch = function (s, a) { // find first partial match with s in a
  * tgi-core/lib/tgi-core-list.source.js
  */
 // Constructor
-var List = function (model) {
+var List = function (source) {
   if (false === (this instanceof List)) throw new Error('new operator required');
-  if (false === (model instanceof Model)) throw new Error('argument required: model');
-  this.model = model; // todo make unit test for this
+  if (source instanceof Model) {
+    this.model = source;
+  } else if (source instanceof View) {
+    this.view = source;
+    this.model = this.view.primaryModel;
+  } else {
+    throw new Error('argument required: model');
+  }
+  this.attributes = source.attributes;
   this._items = [];
   this._itemIndex = -1;
 };
@@ -940,10 +952,25 @@ List.prototype.clear = function () {
 };
 List.prototype.get = function (attribute) {
   if (this._items.length < 1) throw new Error('list is empty');
-  for (var i = 0; i < this.model.attributes.length; i++) {
-    if (this.model.attributes[i].name.toUpperCase() == attribute.toUpperCase()) {
-      if (this.model.attributes[i].type == 'Date' && !(this._items[this._itemIndex][i] instanceof Date)) {
-        return new Date(this._items[this._itemIndex][i]); // todo problem with stores not keeping date type (mongo or host) kludge fix for now
+  for (var i = 0; i < this.attributes.length; i++) {
+    var curName = this.attributes[i].name.toUpperCase();
+    var wantedName = attribute.toUpperCase();
+    var splitName = wantedName.split('.');
+    //console.log('curName : ' + curName);
+    //console.log('wantedName : ' + wantedName + ' size ' + splitName.length);
+    var matches = (curName == wantedName);
+    if (splitName.length == 2) {
+      wantedName = splitName[1];
+      var wantedModel = splitName[0];
+      var curModel = this.attributes[i].model.modelType.toUpperCase();
+      matches = (curName == wantedName) && (wantedModel==curModel);
+    }
+    if (matches) {
+      if (this.attributes[i].type == 'Date' && !(this._items[this._itemIndex][i] instanceof Date)) {
+        if (this._items[this._itemIndex][i] === null || this._items[this._itemIndex][i] === undefined)
+          return null;
+        else
+          return new Date(this._items[this._itemIndex][i]); // todo problem with stores not keeping date type (mongo or host) kludge fix for now
       } else {
         return this._items[this._itemIndex][i];
       }
@@ -952,8 +979,21 @@ List.prototype.get = function (attribute) {
 };
 List.prototype.set = function (attribute, value) {
   if (this._items.length < 1) throw new Error('list is empty');
-  for (var i = 0; i < this.model.attributes.length; i++) {
-    if (this.model.attributes[i].name.toUpperCase() == attribute.toUpperCase()) {
+  for (var i = 0; i < this.attributes.length; i++) {
+    var curName = this.attributes[i].name.toUpperCase();
+    var wantedName = attribute.toUpperCase();
+    var splitName = wantedName.split('.');
+    //console.log('curName : ' + curName);
+    //console.log('wantedName : ' + wantedName + ' size ' + splitName.length);
+    var matches = (curName == wantedName);
+    if (splitName.length == 2) {
+      wantedName = splitName[1];
+      var wantedModel = splitName[0];
+      var curModel = this.attributes[i].model.modelType.toUpperCase();
+      matches = (curName == wantedName) && (wantedModel==curModel);
+    }
+    if (matches) {
+
       this._items[this._itemIndex][i] = value;
       return;
     }
@@ -968,7 +1008,7 @@ List.prototype.addItem = function (item) {
       values.push(item.attributes[i].value);
     }
   } else {
-    for (i in this.model.attributes) {
+    for (i in this.attributes) {
       values.push(undefined);
     }
   }
@@ -1021,7 +1061,7 @@ List.prototype.sort = function (key) {
   }
   if (!keyvalue) throw new Error('sort order required');
   var ascendingSort = (key[keyvalue] == 1);
-  while (i < this.model.attributes.length && this.model.attributes[i].name != keyvalue) i++;
+  while (i < this.attributes.length && this.attributes[i].name != keyvalue) i++;
   this._items.sort(function (a, b) {
     if (ascendingSort) {
       if (a[i] < b[i])
@@ -1039,6 +1079,51 @@ List.prototype.sort = function (key) {
 };
 
 /**---------------------------------------------------------------------------------------------------------------------
+ * tgi-core/lib/core/tgi-core-message.source.js
+ */
+/**
+ * Constructor
+ */
+function Message(type, contents) {
+  if (false === (this instanceof Message)) throw new Error('new operator required');
+  if ('undefined' == typeof type) throw new Error('message type required');
+  if (!contains(Message.getTypes(), type)) throw new Error('Invalid message type: ' + type);
+  this.type = type;
+  this.contents = contents;
+}
+/**
+ * Methods
+ */
+Message.prototype.toString = function () {
+  switch (this.type) {
+    case 'Null':
+      return this.type + ' Message';
+    default:
+      return this.type + ' Message: ' + this.contents;
+  }
+};
+/**
+ * Simple functions
+ */
+Message.getTypes = function () {
+  return [
+    'Null',
+    'Connected',
+    'Error',
+    'Sent',
+    'Ping',
+    'PutModel',
+    'PutModelAck',
+    'GetModel',
+    'GetModelAck',
+    'DeleteModel',
+    'DeleteModelAck',
+    'GetList',
+    'GetListAck'
+  ].slice(0); // copy array
+};
+
+/**---------------------------------------------------------------------------------------------------------------------
  * tgi-core/lib/tgi-core-model.source.js
  */
 /**
@@ -1047,16 +1132,16 @@ List.prototype.sort = function (key) {
 var Model = function (args) {
   var i;
   if (false === (this instanceof Model)) throw new Error('new operator required');
-  this.modelType = "Model";
   this.attributes = [new Attribute('id', 'ID')];
   args = args || {};
+  this.modelType = args.modelType || "Model";
   if (args.attributes) {
     for (i in args.attributes) {
       if (args.attributes.hasOwnProperty(i))
         this.attributes.push(args.attributes[i]);
     }
   }
-  var unusedProperties = getInvalidProperties(args, ['attributes']);
+  var unusedProperties = getInvalidProperties(args, ['modelType', 'attributes']);
   var errorList = this.getObjectStateErrors(); // before leaving make sure valid Model
   for (i = 0; i < unusedProperties.length; i++) errorList.push('invalid property: ' + unusedProperties[i]);
   if (errorList.length > 1) throw new Error('error creating Model: multiple errors');
@@ -1064,6 +1149,9 @@ var Model = function (args) {
   // Validations done
   this._eventListeners = [];
   this._errorConditions = {};
+  //for (i = 0; i < this.attributes.length; i++) {
+  //  this.attributes[i].model = this;
+  //}
 };
 Model._ModelConstructor = {};
 /**
@@ -1098,6 +1186,13 @@ Model.prototype.getObjectStateErrors = function () {
     this.validationErrors.push('tags must be Array or null');
   }
   return this.validationErrors;
+};
+Model.prototype.attribute = function (attributeName) {
+  for (var i = 0; i < this.attributes.length; i++) {
+    if (this.attributes[i].name.toUpperCase() == attributeName.toUpperCase())
+      return this.attributes[i];
+  }
+  throw new Error('attribute not found in model: ' + attributeName);
 };
 Model.prototype.get = function (attribute) {
   for (var i = 0; i < this.attributes.length; i++) {
@@ -1225,51 +1320,6 @@ Model.prototype.clearError = function (condition) {
   delete this._errorConditions[condition];
 };
 /**---------------------------------------------------------------------------------------------------------------------
- * tgi-core/lib/core/tgi-core-message.source.js
- */
-/**
- * Constructor
- */
-function Message(type, contents) {
-  if (false === (this instanceof Message)) throw new Error('new operator required');
-  if ('undefined' == typeof type) throw new Error('message type required');
-  if (!contains(Message.getTypes(), type)) throw new Error('Invalid message type: ' + type);
-  this.type = type;
-  this.contents = contents;
-}
-/**
- * Methods
- */
-Message.prototype.toString = function () {
-  switch (this.type) {
-    case 'Null':
-      return this.type + ' Message';
-    default:
-      return this.type + ' Message: ' + this.contents;
-  }
-};
-/**
- * Simple functions
- */
-Message.getTypes = function () {
-  return [
-    'Null',
-    'Connected',
-    'Error',
-    'Sent',
-    'Ping',
-    'PutModel',
-    'PutModelAck',
-    'GetModel',
-    'GetModelAck',
-    'DeleteModel',
-    'DeleteModelAck',
-    'GetList',
-    'GetListAck'
-  ].slice(0); // copy array
-};
-
-/**---------------------------------------------------------------------------------------------------------------------
  * tgi-core/lib/core/tgi-core-procedure.source.js
  */
 /**
@@ -1277,6 +1327,9 @@ Message.getTypes = function () {
  */
 var Procedure = function (args) {
   if (false === (this instanceof Procedure)) throw new Error('new operator required');
+  if (args instanceof Array) { // shorthand for Procedure command
+    args = {tasks: args};
+  }
   args = args || {};
   var i;
   var unusedProperties = getInvalidProperties(args, ['tasks', 'tasksNeeded', 'tasksCompleted']);
@@ -1407,7 +1460,7 @@ Store.prototype.toString = function () {
   if (this.name == 'a ' + this.storeType) {
     return this.name;
   } else {
-    return this.storeType + ': ' +this.name;
+    return this.storeType + ': ' + this.name;
   }
 };
 Store.prototype.getServices = function () {
@@ -1430,6 +1483,103 @@ Store.prototype.deleteModel = function () {
 Store.prototype.getList = function () {
   throw new Error('Store does not provide getList');
 };
+Store.prototype.getViewList = function (viewList, filter, arg3, arg4) {
+  var store = this;
+  var callback, order, i;
+  if (typeof(arg4) == 'function') {
+    callback = arg4;
+    order = arg3;
+  } else {
+    callback = arg3;
+  }
+  if (!(viewList instanceof List)) throw new Error('argument must be a List');
+  if (!viewList.view) throw new Error('List is Model type use getList');
+  if (!(filter instanceof Object)) throw new Error('filter argument must be Object');
+  if (typeof callback != "function") throw new Error('callback required');
+
+  /**
+   * use getList to populate initial rows
+   */
+  var proxyList = new List(viewList.model);
+  if (order)
+    this.getList(proxyList, filter, order, gotProxyList);
+  else
+    this.getList(proxyList, filter, gotProxyList);
+
+  /**
+   * Process proxy list and populate list
+   */
+  function gotProxyList(list, error) {
+    /**
+     * clear target list and make sure no errors
+     */
+    viewList.clear();
+    if (typeof error != 'undefined') {
+      callback(viewList, error);
+      return;
+    }
+    /**
+     * Move through each row
+     */
+    var moreRows = proxyList.moveFirst();
+    var relatedModelNames = [];
+    processRow();
+
+    /**
+     * Process Row
+     */
+    function processRow() {
+      if (!moreRows) { // Are we done?
+        callback(viewList);
+        return;
+      }
+      viewList.addItem();
+
+      // Populate from primary row
+      for (i = 0; i < viewList.attributes.length; i++) {
+        var col = viewList.attributes[i];
+        if (col.model == viewList.model) {
+          viewList.set(col.name, proxyList.get(col.name));
+        }
+      }
+      relatedModelNames = [];
+      for (var relatedModel in viewList.view.relatedModels)
+        if (viewList.view.relatedModels.hasOwnProperty(relatedModel))
+          relatedModelNames.push(relatedModel);
+      getRelatedModel();
+    }
+
+    function getRelatedModel() {
+      if (!relatedModelNames.length) {
+        moreRows = proxyList.moveNext();
+        processRow();
+        return;
+      }
+      //console.log('*** GETTING relatedModelNames ***');
+
+      var foreignAttribute = relatedModelNames.shift();
+      var relatedModel = viewList.view.relatedModels[foreignAttribute];
+      var foreignID = proxyList.get(relatedModel.id.name);
+      relatedModel.model.set('id', foreignID);
+      store.getModel(relatedModel.model, function (model, error) {
+        if (typeof error != 'undefined') {
+          callback(error);
+          return;
+        }
+        // Populate from primary row
+        for (var i = 0; i < viewList.attributes.length; i++) {
+          var col = viewList.attributes[i];
+          if (col.model == model) {
+            //console.log('Setting col.name ' + col.name + ' ' + model.get(col.name));
+            viewList.set(model.modelType + '.' + col.name, model.get(col.name));
+          }
+        }
+        getRelatedModel();
+      });
+    }
+  }
+};
+
 
 /**---------------------------------------------------------------------------------------------------------------------
  * tgi-core/lib/core/tgi-core-text.source.js
@@ -1601,6 +1751,58 @@ Transport.prototype.close = function () {
   if (!this.connected)
     throw new Error('not connected');
   this.socket.disconnect();
+};
+
+/**---------------------------------------------------------------------------------------------------------------------
+ * tgi-core/lib/core/tgi-core-view.source.js
+ */
+/**
+ * Constructor
+ */
+function View(primaryModel, relatedModels, attributes) {
+  if (false === (this instanceof View)) throw new Error('new operator required');
+  if (!(primaryModel instanceof Model)) throw new Error('argument must be a Model');
+  if (typeof relatedModels != 'object') throw new Error('object expected');
+  if (!(attributes instanceof Array)) throw new Error('array of attributes expected');
+  this.primaryModel = primaryModel;
+  this.relatedModels = relatedModels;
+  this.attributes = attributes;
+  var id = new Attribute('id', 'ID');
+  id.model = primaryModel;
+  this.attributes.unshift(id);
+
+  /**
+   * Make sure relatedModels valid
+   */
+  for (var relatedModel in relatedModels) {
+    if (relatedModels.hasOwnProperty(relatedModel)) {
+      var obj = relatedModels[relatedModel];
+      //console.log('relatedModel ' + relatedModel);
+      //console.log('obj ' + JSON.stringify(obj));
+      if (typeof obj != 'object') throw new Error('relatedModel key values expect object');
+      if (obj.id === undefined) throw new Error('relatedModel key values expect object with id key');
+      if (obj.model === undefined) throw new Error('relatedModel key values expect object with model key');
+      if (!(obj.id instanceof Attribute)) throw new Error('relatedModel id must be a Attribute');
+      if (!(obj.model instanceof Model)) throw new Error('relatedModel model must be a Model');
+    }
+  }
+  /**
+   * Check attributes
+   */
+  for (var i = 0; i < attributes.length; i++) {
+    var attribute = attributes[i];
+    if (!(attribute instanceof Attribute)) throw new Error('attribute array must contain Attributes');
+    if (!(attribute.model instanceof Model)) {
+      throw new Error('attribute array must contain Attributes with model references');
+    }
+
+  }
+}
+/**
+ * Methods
+ */
+View.prototype.toString = function () {
+  return this.primaryModel + ' View';
 };
 
 /**---------------------------------------------------------------------------------------------------------------------
@@ -2627,6 +2829,7 @@ MemoryStore.prototype.getList = function (list, filter, arg3, arg4) {
     callback = arg3;
   }
   if (!(list instanceof List)) throw new Error('argument must be a List');
+  if (list.view) throw new Error('List is View type use getViewList');
   if (!(filter instanceof Object)) throw new Error('filter argument must be Object');
   if (typeof callback != "function") throw new Error('callback required');
   // Find model in memorystore, error out if can't find
@@ -2824,7 +3027,7 @@ var cpad = function (expr, length, fillChar) {
 TGI.STORE = TGI.STORE || {};
 TGI.STORE.HOST = function () {
   return {
-    version: '0.0.9'
+    version: '0.0.31'
   };
 };
 
@@ -2833,22 +3036,28 @@ TGI.STORE.HOST = function () {
  */
 
 Transport.setMessageHandler('PutModel', function (messageContents, fn) {
-  //console.log('PutModel here');
   // create proxy for client model
   var ProxyPutModel = function (args) {
+    //console.log('PutModel messageContents: json  ' + JSON.stringify(messageContents));
     Model.call(this, args);
     this.modelType = messageContents.modelType;
     this.attributes = [];
     var a, attrib, v;
     for (a in messageContents.attributes) {
+      //console.log('PutModel Attribute: json  ' + JSON.stringify(messageContents.attributes[a]));
       if (messageContents.attributes[a].type == 'Model') {
-        //console.log('putting ' + messageContents.attributes[a]);
-        //console.log('json  ' + JSON.stringify(messageContents.attributes[a]));
         v = new Attribute.ModelID(createModelFromModelType(messageContents.attributes[a].modelType));
         v.value = messageContents.attributes[a].value.value;
         if (messageContents.attributes[a].value.name)
           v.name = messageContents.attributes[a].value.name;
         attrib = new Attribute({name: messageContents.attributes[a].name, type: 'Model', value: v});
+      } else if (messageContents.attributes[a].type == 'Date') {
+        attrib = new Attribute(messageContents.attributes[a].name, messageContents.attributes[a].type);
+        try {
+          attrib.value = messageContents.attributes[a].value === null ? null : new Date(messageContents.attributes[a].value);
+        } catch (e) {
+          attrib.value = null;
+        }
       } else {
         attrib = new Attribute(messageContents.attributes[a].name, messageContents.attributes[a].type);
         if (attrib.name == 'id') { // TODO only If mongo! or refactor mongo to normalize IDs
@@ -2938,11 +3147,11 @@ Transport.setMessageHandler('GetList', function (messageContents, fn) {
   var filter = messageContents.filter;
   for (var i in filter)
     if (filter.hasOwnProperty(i)) {
-      console.log('GetList Handler: before ' + i + ':' + filter[i] + '');
+      //console.log('GetList Handler: before ' + i + ':' + filter[i] + '');
       if (typeof filter[i] == 'string' && left(filter[i], 7) == 'RegExp:') {
-        filter[i] = new RegExp(right(filter[i], (filter[i].length) - 7),'i'); // todo instead of hard coding ignore case preserve original regexp correctly
+        filter[i] = new RegExp(right(filter[i], (filter[i].length) - 7), 'i'); // todo instead of hard coding ignore case preserve original regexp correctly
       }
-      console.log('GetList Handler: after ' + i + ':' + filter[i] + '');
+      //console.log('GetList Handler: after ' + i + ':' + filter[i] + '');
     }
   var proxyList = new List(new Model());
   proxyList.model.modelType = messageContents.list.model.modelType;
@@ -2950,10 +3159,13 @@ Transport.setMessageHandler('GetList', function (messageContents, fn) {
   var msg;
 
   function messageCallback(list, error) {
-    if (typeof error == 'undefined')
+    if (typeof error == 'undefined') {
       msg = new Message('GetListAck', list);
-    else
+      //console.log('messageCallback..............');
+      //console.log(JSON.stringify(list));
+    } else {
       msg = new Message('GetListAck', error + "");
+    }
     fn(msg);
   }
 
@@ -2970,7 +3182,7 @@ Transport.setMessageHandler('GetList', function (messageContents, fn) {
 TGI.STORE = TGI.STORE || {};
 TGI.STORE.MONGODB = function () {
   return {
-    version: '0.0.6',
+    version: '0.0.23',
     MongoStore: MongoStore
   };
 };
@@ -3066,7 +3278,7 @@ MongoStore.prototype.onConnect = function (location, callback, options) {
         }
       } else {
         if (userName) {
-          console.log('authenticate(%s,%s,%s)',userName, password, JSON.stringify(authenticateOptions));
+          //console.log('authenticate(%s,%s,%s)',userName, password, JSON.stringify(authenticateOptions));
           store.mongoDatabase.authenticate(userName, password, authenticateOptions, function (err, res) {
             if (err) {
               callback(store, err);
@@ -3096,9 +3308,11 @@ MongoStore.prototype.putModel = function (model, callback) {
   if (typeof callback != "function") throw new Error('callback required');
   var store = this;
   var a;
+  //console.log('MongoStore.prototype.putModel...');
+  //console.log(JSON.stringify(model));
   store.mongoDatabase.collection(model.modelType, function (err, collection) {
     if (err) {
-      //console.log('putModel collection error: ' + err);
+      console.log('putModel collection error: ' + err);
       callback(model, err);
       return;
     }
@@ -3125,10 +3339,10 @@ MongoStore.prototype.putModel = function (model, callback) {
       }
     }
     if (newModel) {
-//      console.log('collection.insert (modelData): ' + JSON.stringify(modelData));
+      //console.log('collection.insert (modelData): ' + JSON.stringify(modelData));
       collection.insert(modelData, {safe: true}, function (err, result) {
         if (err) {
-          //console.log('putModel insert error: ' + err);
+          console.log('putModel insert error: ' + err);
           callback(model, err);
         } else {
           // Get resulting data
@@ -3149,7 +3363,7 @@ MongoStore.prototype.putModel = function (model, callback) {
       id = MongoStore._connection.mongo.ObjectID.createFromHexString(id);
       collection.update({'_id': id}, modelData, {safe: true}, function (err, result) {
         if (err) {
-          //console.log('putModel update error: ' + err);
+          console.log('putModel update error: ' + err);
           callback(model, err);
         } else {
           // Get resulting data
@@ -3177,19 +3391,19 @@ MongoStore.prototype.getModel = function (model, callback) {
     try {
       id = MongoStore._connection.mongo.ObjectID.createFromHexString(id);
     } catch (e) {
-      //console.log('getModel createFromHexString error: ' + e);
+      console.log('getModel createFromHexString error: ' + e);
       callback(model, e);
     }
   }
   store.mongoDatabase.collection(model.modelType, function (err, collection) {
     if (err) {
-      //console.log('getModel collection error: ' + err);
+      console.log('getModel collection error: ' + err);
       callback(model, err);
       return;
     }
     collection.findOne({'_id': id}, function (err, item) {
       if (err) {
-        //console.log('getModel findOne ERROR: ' + err);
+        console.log('getModel findOne ERROR: ' + err);
         callback(model, err);
         return;
       }
@@ -3207,6 +3421,8 @@ MongoStore.prototype.getModel = function (model, callback) {
           }
         }
         callback(model);
+        //console.log('MongoStore.prototype.getModel model...');
+        //console.log(JSON.stringify(model));
       }
     });
   });
@@ -3230,19 +3446,19 @@ MongoStore.prototype.deleteModel = function (model, callback) {
     try {
       id = MongoStore._connection.mongo.ObjectID.createFromHexString(id);
     } catch (e) {
-      //console.log('deleteModel createFromHexString error: ' + e);
+      console.log('deleteModel createFromHexString error: ' + e);
       callback(model, e);
     }
   }
   store.mongoDatabase.collection(model.modelType, function (err, collection) {
     if (err) {
-      //console.log('deleteModel collection error: ' + err);
+      console.log('deleteModel collection error: ' + err);
       callback(model, err);
       return;
     }
     collection.remove({'_id': id}, function (err, item) {
       if (err) {
-        //console.log('deleteModel remove ERROR: ' + err);
+        console.log('deleteModel remove ERROR: ' + err);
         callback(model, err);
         return;
       }
@@ -3265,6 +3481,7 @@ MongoStore.prototype.getList = function (list, filter, arg3, arg4) {
     callback = arg3;
   }
   if (!(list instanceof List)) throw new Error('argument must be a List');
+  if (list.view) throw new Error('List is View type use getViewList');
   if (!(filter instanceof Object)) throw new Error('filter argument must be Object');
   if (typeof callback != "function") throw new Error('callback required');
   var store = this;
@@ -3277,6 +3494,14 @@ MongoStore.prototype.getList = function (list, filter, arg3, arg4) {
 //      console.log('prop = ' + prop);
       if (list.model.getAttributeType(prop) == 'ID')
         mongoFilter[prop] = MongoStore._connection.mongo.ObjectID.createFromHexString(filter[prop]);
+      else if (list.model.getAttributeType(prop) == 'Date' && filter[prop] != null) {
+        //console.log('new date code ...');
+        var start = new Date(filter[prop]);
+        var end = new Date(filter[prop]);
+        start.setHours(0,0,0,0);
+        end.setHours(23,59,59,999);
+        mongoFilter[prop] = {$gte: start, $lt: end};
+      }
       else
         mongoFilter[prop] = filter[prop];
     }
@@ -3284,40 +3509,62 @@ MongoStore.prototype.getList = function (list, filter, arg3, arg4) {
 
   store.mongoDatabase.collection(list.model.modelType, function (err, collection) {
     if (err) {
-      //console.log('getList collection error: ' + err);
+      console.log('getList collection error: ' + err);
       callback(list, err);
       return;
     }
     if (order) {
-      collection.find({query: mongoFilter, $orderby: order}, findcallback);
+      var newOrder = {};
+      for (var o in order) {
+        if (order.hasOwnProperty(o)) {
+          var oo = o;
+          if (o=='id')
+            oo = '_id';
+          newOrder[oo] = order[o];
+        }
+      }
+      //console.log('newOrder: ' + JSON.stringify(newOrder));
+      collection.find({query: mongoFilter, $orderby: newOrder}, findcallback);
     } else {
       collection.find(mongoFilter, findcallback);
     }
     function findcallback(err, cursor) {
       if (err) {
-        //console.log('getList find error: ' + err);
+        console.log('getList find error: ' + err);
         callback(list, err);
         return;
       }
       cursor.toArray(function (err, documents) {
         if (err) {
-          //console.log('getList toArray error: ' + err);
+          console.log('getList toArray error: ' + err);
           callback(list, err);
           return;
         }
+        //console.log('documents: ' + JSON.stringify(documents));
         for (var i = 0; i < documents.length; i++) {
-          documents[i].id = documents[i]._id.toString();
-          delete documents[i]._id;
           var dataPart = [];
-          dataPart.push(documents[i].id);
-          for (var j in documents[i]) {
-            if (j != 'id')
-              dataPart.push(documents[i][j]);
+          var model = list.model;
+          var item = documents[i];
+          //console.log('*** START ***');
+          for (var a in model.attributes) {
+            if (model.attributes.hasOwnProperty(a)) {
+              if (model.attributes[a].name == 'id')
+                model.attributes[a].value = item._id.toString();
+              else if (item[model.attributes[a].name] && model.attributes[a].type == 'ID')
+                model.attributes[a].value = (item[model.attributes[a].name]).toString();
+              else
+                model.attributes[a].value = item[model.attributes[a].name];
+              dataPart.push(model.attributes[a].value);
+            }
           }
+          //console.log('*** STOP ***');
           list._items.push(dataPart);
+          //console.log('dataPart: ' + JSON.stringify(dataPart));
         }
         list._itemIndex = list._items.length - 1;
         callback(list);
+        //console.log('list..');
+        //console.log(JSON.stringify(list));
       });
     }
   });

@@ -158,6 +158,12 @@ spec.test('tgi-core/lib/tgi-core-attribute.spec.js', 'Attribute', 'defines data 
         return typeof new Attribute({name: 'name', label: 'Name'}).hint;
       });
     });
+    spec.heading('hidden', function () {
+      spec.paragraph('Attribute hidden by default');
+      spec.example('hidden set in constructor', undefined, function () {
+        new Attribute({name: 'name', label: 'Name', hidden: '*'});
+      });
+    });
     spec.heading('quickPick', function () {
       spec.example('list of values to pick from typically invoked from dropdown', 3, function () {
         return new Attribute({name: 'stooge', quickPick: ['moe', 'larry', 'curly']}).quickPick.length;
@@ -483,9 +489,9 @@ spec.test('tgi-core/lib/tgi-core-attribute.spec.js', 'Attribute', 'defines data 
         this.shouldBeTrue(myBool.coerce(true) === true && myBool.coerce(1) === true);
         this.shouldBeTrue(myBool.coerce('y') && myBool.coerce('yEs') && myBool.coerce('t') && myBool.coerce('TRUE') && myBool.coerce('1'));
         this.shouldBeTrue(!((myBool.coerce('') || (myBool.coerce('yep')))));
-        //// Date {todo this will break in 2016}
-        this.shouldBeTrue(myDate.coerce('2/21/2015').getTime() === new Date('2/21/2015').getTime());
-        this.shouldBeTrue(myDate.coerce('2/21').getTime() === new Date('2/21/2015').getTime());
+        //// Date {todo this will break in 2017}
+        this.shouldBeTrue(myDate.coerce('2/21/2016').getTime() === new Date('2/21/2016').getTime());
+        this.shouldBeTrue(myDate.coerce('2/21').getTime() === new Date('2/21/2016').getTime());
 
         // TODO
         this.shouldThrowError(Error('coerce cannot determine appropriate value'), function () {
@@ -1907,8 +1913,6 @@ spec.testModel = function (SurrogateModel, root) {
         model.attributes = [new Attribute("ID", "ID"), new SurrogateModel(), 0, 'a', {}, [], null];
         this.shouldBeTrue(model.getObjectStateErrors(true).length == 6);
       });
-    });
-    spec.heading('value', function () {
     });
   });
   spec.heading('METHODS', function () {
